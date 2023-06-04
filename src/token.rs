@@ -8,6 +8,18 @@ pub(crate) struct SourceLocation<'filename> {
     pub num_chars: usize,
 }
 
+impl Display for SourceLocation<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}:{}:{}",
+            self.filename.display(),
+            self.line,
+            self.column
+        )
+    }
+}
+
 #[derive(Debug)]
 pub(crate) enum TokenType {
     LeftCurlyBracket,
@@ -16,6 +28,24 @@ pub(crate) enum TokenType {
     RightParenthesis,
     LeftSquareBracket,
     RightSquareBracket,
+    Plus,
+    Minus,
+    Asterisk,
+    Slash,
+    Equals,
+    GreaterThan,
+    LessThan,
+    GreaterThanEquals,
+    LessThanEquals,
+    TildeGreaterThan,
+    MinusGreaterThan,
+    At,
+    ExclamationMark,
+    Colon,
+    ColonColon,
+    Semicolon,
+    Comma,
+    Dot,
 
     Import,
     From,
@@ -41,6 +71,8 @@ pub(crate) enum TokenType {
 
     Identifier,
 
+    Integer,
+
     EndOfInput,
 }
 
@@ -55,7 +87,7 @@ impl Display for Token<'_, '_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "{} ({:?}, {}:{}:{}, {} chars)",
+            "'{}' ({:?}, {}:{}:{}, {} chars)",
             self.lexeme,
             self.type_,
             self.source_location.filename.display(),
