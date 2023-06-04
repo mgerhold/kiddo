@@ -72,6 +72,7 @@ pub(crate) enum TokenType {
     Identifier,
 
     Integer,
+    Char,
 
     EndOfInput,
 }

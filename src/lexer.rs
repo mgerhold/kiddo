@@ -7,32 +7,25 @@ use crate::token::{SourceLocation, Token, TokenType};
 
 #[derive(Debug)]
 pub(crate) enum LexerError<'filename> {
-    InvalidInput(char),
+    InvalidInput(SourceLocation<'filename>, char),
     UnterminatedMultilineComment(SourceLocation<'filename>),
     ExpectedBinaryDigit(SourceLocation<'filename>),
     ExpectedOctalDigit(SourceLocation<'filename>),
     ExpectedDecimalDigit(SourceLocation<'filename>),
+    ExpectedChar(SourceLocation<'filename>),
+    InvalidEscapeSequence(SourceLocation<'filename>, char),
+    UnexpectedCharacter {
+        source_location: SourceLocation<'filename>,
+        expected: char,
+        actual: char,
+    },
 }
 
 impl Error for LexerError<'_> {}
 
 impl fmt::Display for LexerError<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            LexerError::InvalidInput(actual) => write!(f, "invalid input: '{actual}'"),
-            LexerError::UnterminatedMultilineComment(source_location) => {
-                write!(f, "unterminated multiline comment: {source_location}")
-            }
-            LexerError::ExpectedBinaryDigit(source_location) => {
-                write!(f, "expected binary digit: {source_location}")
-            }
-            LexerError::ExpectedOctalDigit(source_location) => {
-                write!(f, "expected octal digit: {source_location}")
-            }
-            LexerError::ExpectedDecimalDigit(source_location) => {
-                write!(f, "expected decimal digit: {source_location}")
-            }
-        }
+        write!(f, "{:?}", self)
     }
 }
 
@@ -279,8 +272,8 @@ pub(crate) fn tokenize<'filename, 'source>(
 
             if is_binary_number
                 && (is_octal_digit(state.current())
-                    || is_hex_digit(state.current())
-                    || state.current().is_ascii_digit())
+                || is_hex_digit(state.current())
+                || state.current().is_ascii_digit())
             {
                 return Err(LexerError::ExpectedBinaryDigit(state.source_location(1)));
             }
@@ -354,6 +347,43 @@ pub(crate) fn tokenize<'filename, 'source>(
             continue;
         }
 
+        if state.current() == '\'' {
+            let is_valid_escape_character = |c: char| { ['t', 'n', 'r', 'v', '\\', '\''].contains(&c) };
+
+            let source_location = state.source_location(0);
+            let start_offset = state.offset;
+            state.advance(); // consume opening '
+            if state.current() == '\'' {
+                return Err(LexerError::ExpectedChar(state.source_location(1)));
+            }
+            let is_escape_sequence = state.current() == '\\';
+            if is_escape_sequence {
+                if !is_valid_escape_character(state.peek()) {
+                    let length = state.peek().width().unwrap_or(0);
+                    return Err(LexerError::InvalidEscapeSequence(state.source_location(1 + length), state.peek()));
+                }
+                state.advance(); // consume '\'
+            }
+            state.advance(); // consume escape sequence character or actual character
+            if state.current() != '\'' {
+                let length = state.peek().width().unwrap_or(0);
+                return Err(LexerError::UnexpectedCharacter {
+                    source_location: state.source_location(length),
+                    expected: '\'',
+                    actual: state.current(),
+                });
+            }
+            state.advance(); // consume closing '
+            let end_offset = state.offset;
+            let num_bytes = end_offset - start_offset;
+            tokens.push(Token{
+                lexeme: state.lexeme(start_offset, num_bytes),
+                source_location,
+                type_: TokenType::Char,
+            });
+            continue;
+        }
+
         if state.current() == '/' {
             if state.peek() == '/' {
                 // single line comment
@@ -404,7 +434,7 @@ pub(crate) fn tokenize<'filename, 'source>(
             continue;
         }
 
-        return Err(LexerError::InvalidInput(state.current()));
+        return Err(LexerError::InvalidInput(state.source_location(1), state.current()));
     }
 
     tokens.push(Token {
