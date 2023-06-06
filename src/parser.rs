@@ -228,6 +228,5 @@ impl<'a> ParserState<'a> {
 }
 
 pub(crate) fn parse<'a>(tokens: &'a [Token<'a>]) -> Result<Module<'a>, ParserError> {
-    let mut state = ParserState::new(tokens);
-    state.module()
+    ParserState::new(tokens).module()
 }
