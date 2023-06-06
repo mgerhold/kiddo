@@ -98,6 +98,11 @@ impl<'a> ParserState<'a> {
     }
 
     fn import(&mut self) -> Result<Import<'a>, ParserError> {
+        /*
+        Import:
+            'import' what=QualifiedName ('as' Identifier)? ';'
+            | 'from' where=QualifiedName 'import' symbol=Identifier ('as' Identifier)? ';'
+         */
         assert!(matches!(
             self.current(),
             Some(Token {
@@ -155,6 +160,10 @@ impl<'a> ParserState<'a> {
     }
 
     fn qualified_name(&mut self) -> Result<QualifiedName<'a>, ParserError> {
+        /*
+        QualifiedName:
+            ('::')? tokens+=Identifier ('::' tokens+=Identifier)*
+         */
         match self.current() {
             Some(Token {
                 type_: TokenType::ColonColon | TokenType::Identifier,
