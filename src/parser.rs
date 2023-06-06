@@ -159,6 +159,15 @@ impl<'a> ParserState<'a> {
         consumable_tokens
     }
 
+    fn consume_until_none_of(&mut self, types: &[TokenType]) -> &'a [Token<'a>] {
+        let consumable_tokens = self.tokens[self.current_index..]
+            .split(|token| !types.contains(&token.type_))
+            .next()
+            .expect("split does always return an iterator with at least one element");
+        self.advance(consumable_tokens.len());
+        consumable_tokens
+    }
+
     fn qualified_name(&mut self) -> Result<QualifiedName<'a>, ParserError> {
         /*
         QualifiedName:
@@ -168,11 +177,9 @@ impl<'a> ParserState<'a> {
             Some(Token {
                 type_: TokenType::ColonColon | TokenType::Identifier,
                 ..
-            }) => QualifiedName::try_from(self.consume_until_one_of(&[
-                TokenType::Semicolon,
-                TokenType::As,
-                TokenType::Import,
-            ])),
+            }) => QualifiedName::try_from(
+                self.consume_until_none_of(&[TokenType::ColonColon, TokenType::Identifier]),
+            ),
             Some(token) => Err(ParserError::TokenTypeMismatch {
                 expected: vec![TokenType::Identifier, TokenType::ColonColon],
                 actual: Some(token.type_),
