@@ -3,21 +3,94 @@ use crate::parser::errors::ParserError;
 use crate::token::{Token, TokenType};
 
 #[derive(Debug)]
-pub(crate) struct Identifier<'a> {
-    token: Token<'a>,
+pub(crate) struct Module<'a> {
+    pub(crate) imports: Vec<Import<'a>>,
+    pub(crate) definitions: Vec<Definition<'a>>,
 }
 
-impl<'a> TryFrom<Token<'a>> for Identifier<'a> {
+#[derive(Debug)]
+pub(crate) enum Import<'a> {
+    Import {
+        what: QualifiedName<'a>,
+    },
+    ImportAs {
+        what: QualifiedName<'a>,
+        as_: Identifier<'a>,
+    },
+    FromImport {
+        where_: QualifiedName<'a>,
+        symbol: Identifier<'a>,
+    },
+    FromImportAs {
+        where_: QualifiedName<'a>,
+        symbol: Identifier<'a>,
+        as_: Identifier<'a>,
+    },
+}
+
+#[derive(Debug)]
+pub(crate) enum Definition<'a> {
+    Struct(StructDefinition<'a>),
+}
+
+#[derive(Debug)]
+pub(crate) struct StructDefinition<'a> {
+    pub(crate) name: Identifier<'a>,
+    pub(crate) members: Vec<StructMember<'a>>,
+}
+
+#[derive(Debug)]
+pub(crate) struct StructMember<'a> {
+    name: Identifier<'a>,
+    type_: Identifier<'a>,
+}
+
+impl<'a> TryFrom<&'a [Token<'a>]> for StructMember<'a> {
     type Error = ParserError;
 
-    fn try_from(token: Token<'a>) -> Result<Self, Self::Error> {
-        if token.type_ == TokenType::Identifier {
-            Ok(Self { token })
-        } else {
-            Err(ParserError::TokenTypeMismatch {
+    fn try_from(tokens: &'a [Token<'a>]) -> Result<Self, Self::Error> {
+        match tokens {
+            [name @ Token { .. }, Token {
+                type_: TokenType::Colon,
+                ..
+            }, type_ @ Token { .. }, ..] => Ok(Self {
+                name: Identifier::try_from(*name)?,
+                type_: Identifier::try_from(*type_)?,
+            }),
+            [Token { .. }, separator @ Token { .. }, Token { .. }, ..] => {
+                Err(ParserError::TokenTypeMismatch {
+                    expected: vec![TokenType::Colon],
+                    actual: Some(separator.type_),
+                })
+            }
+            [name @ Token { .. }] => {
+                Identifier::try_from(*name)?;
+                Err(ParserError::TokenTypeMismatch {
+                    expected: vec![TokenType::Colon],
+                    actual: None,
+                })
+            }
+            [name @ Token { .. }, Token {
+                type_: TokenType::Colon,
+                ..
+            }] => {
+                Identifier::try_from(*name)?;
+                Err(ParserError::TokenTypeMismatch {
+                    expected: vec![TokenType::Identifier],
+                    actual: None,
+                })
+            }
+            [name @ Token { .. }, separator @ Token { .. }] => {
+                Identifier::try_from(*name)?;
+                Err(ParserError::TokenTypeMismatch {
+                    expected: vec![TokenType::Colon],
+                    actual: Some(separator.type_),
+                })
+            }
+            [] => Err(ParserError::TokenTypeMismatch {
                 expected: vec![TokenType::Identifier],
-                actual: Some(token.type_),
-            })
+                actual: None,
+            }),
         }
     }
 }
@@ -87,26 +160,21 @@ impl<'a> TryFrom<&'a [Token<'a>]> for QualifiedName<'a> {
 }
 
 #[derive(Debug)]
-pub(crate) enum Import<'a> {
-    Import {
-        what: QualifiedName<'a>,
-    },
-    ImportAs {
-        what: QualifiedName<'a>,
-        as_: Identifier<'a>,
-    },
-    FromImport {
-        where_: QualifiedName<'a>,
-        symbol: Identifier<'a>,
-    },
-    FromImportAs {
-        where_: QualifiedName<'a>,
-        symbol: Identifier<'a>,
-        as_: Identifier<'a>,
-    },
+pub(crate) struct Identifier<'a> {
+    token: Token<'a>,
 }
 
-#[derive(Debug)]
-pub(crate) struct Module<'a> {
-    pub(crate) imports: Vec<Import<'a>>,
+impl<'a> TryFrom<Token<'a>> for Identifier<'a> {
+    type Error = ParserError;
+
+    fn try_from(token: Token<'a>) -> Result<Self, Self::Error> {
+        if token.type_ == TokenType::Identifier {
+            Ok(Self { token })
+        } else {
+            Err(ParserError::TokenTypeMismatch {
+                expected: vec![TokenType::Identifier],
+                actual: Some(token.type_),
+            })
+        }
+    }
 }

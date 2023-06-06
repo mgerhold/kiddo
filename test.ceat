@@ -6,12 +6,27 @@ import ::std::terminal as t;
 from std::terminal import print;
 from std import terminal as t;
 
-/*struct S {
+struct S {
     number: U32,
     another: U32,
 }
 
-function f(this: ->S, n: U32) ~> Nothing {
+struct S { }
+
+struct S {
+    n: U32
+}
+
+struct S {
+    n: U32,
+}
+
+struct S {
+    a: U32,
+    b: U32
+}
+
+/*function f(this: ->S, n: U32) ~> Nothing {
     this!.number = this!.number + n;
 }
 

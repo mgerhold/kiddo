@@ -1,6 +1,9 @@
 use crate::parser::errors::ParserError;
-use crate::parser::ir_parsed::{Identifier, Import, Module, QualifiedName};
+use crate::parser::ir_parsed::{
+    Definition, Identifier, Import, Module, QualifiedName, StructDefinition, StructMember,
+};
 use crate::token::{Token, TokenType};
+use std::any::Any;
 
 mod errors;
 mod ir_parsed;
@@ -74,8 +77,11 @@ impl<'a> ParserState<'a> {
         /*
         Module:
             (imports=Imports)
+            (definitions=Definitions)
          */
         let imports = self.imports()?; // maybe empty
+        let definitions = self.definitions()?; // maybe empty
+
         assert!(self.current().is_some());
         match self.current() {
             Some(Token { type_, .. }) if type_ != TokenType::EndOfInput => {
@@ -85,7 +91,10 @@ impl<'a> ParserState<'a> {
                     actual: Some(self.current().unwrap().type_),
                 })
             }
-            _ => Ok(Module { imports }),
+            _ => Ok(Module {
+                imports,
+                definitions,
+            }),
         }
     }
 
@@ -149,6 +158,76 @@ impl<'a> ParserState<'a> {
         };
         self.expect(TokenType::Semicolon)?;
         Ok(import)
+    }
+
+    fn definitions(&mut self) -> Result<Vec<Definition<'a>>, ParserError> {
+        let mut result = Vec::new();
+        while let Some(
+            token @ Token {
+                type_: TokenType::Struct,
+                ..
+            },
+        ) = self.current()
+        {
+            match token.type_ {
+                TokenType::Struct => {
+                    result.push(Definition::Struct(self.struct_definition()?));
+                }
+                _ => unreachable!(),
+            }
+        }
+        Ok(result)
+    }
+
+    fn struct_definition(&mut self) -> Result<StructDefinition<'a>, ParserError> {
+        /*
+        StructDefinition:
+            'struct' (name=Identifier) '{'
+                (members=StructMembers)
+            '}'
+
+        StructMembers:
+            (
+                members+=StructMember
+                (',' members+=StructMember)*
+                (',')?
+            )?
+
+        StructMember:
+            (name=Identifier) ':' (type=Identifier)
+        */
+        assert!(matches!(
+            self.current(),
+            Some(Token {
+                type_: TokenType::Struct,
+                ..
+            })
+        ));
+
+        self.advance(1); // consume 'struct'
+        let name = self.identifier()?;
+        self.expect(TokenType::LeftCurlyBracket)?;
+        let mut members = Vec::new();
+        while let Ok(member) = StructMember::try_from(&self.tokens[self.current_index..]) {
+            members.push(member);
+            self.advance(3);
+            let comma_present = self.consume(TokenType::Comma).is_some();
+            if !comma_present
+                || (comma_present
+                    && matches!(
+                        self.current(),
+                        Some(Token {
+                            type_: TokenType::RightCurlyBracket,
+                            ..
+                        })
+                    ))
+            {
+                break;
+            }
+        }
+        self.expect(TokenType::RightCurlyBracket)?;
+
+        Ok(StructDefinition { name, members })
     }
 
     fn identifier(&mut self) -> Result<Identifier<'a>, ParserError> {
