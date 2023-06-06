@@ -29,19 +29,19 @@ impl fmt::Display for LexerError<'_> {
     }
 }
 
-struct LexerState<'filename, 'source> {
-    filename: &'filename std::path::Path,
-    source: &'source str,
+struct LexerState<'a> {
+    filename: &'a std::path::Path,
+    source: &'a str,
     offset: usize,
     line: usize,
     column: usize,
 }
 
-impl<'filename, 'source> LexerState<'filename, 'source> {
+impl<'a> LexerState<'a> {
     fn new(
-        filename: &'filename std::path::Path,
-        source: &'source str,
-    ) -> Result<Self, LexerError<'filename>> {
+        filename: &'a std::path::Path,
+        source: &'a str,
+    ) -> Result<Self, LexerError<'a>> {
         Ok(Self {
             filename,
             source,
@@ -88,11 +88,11 @@ impl<'filename, 'source> LexerState<'filename, 'source> {
         result
     }
 
-    fn lexeme(&self, start_offset: usize, num_bytes: usize) -> &'source str {
+    fn lexeme(&self, start_offset: usize, num_bytes: usize) -> &'a str {
         &self.source[start_offset..][..num_bytes]
     }
 
-    fn source_location(&self, num_chars: usize) -> SourceLocation<'filename> {
+    fn source_location(&self, num_chars: usize) -> SourceLocation<'a> {
         SourceLocation {
             filename: self.filename,
             line: self.line,
@@ -102,10 +102,10 @@ impl<'filename, 'source> LexerState<'filename, 'source> {
     }
 }
 
-pub(crate) fn tokenize<'filename, 'source>(
-    filename: &'filename std::path::Path,
-    source: &'source str,
-) -> Result<Vec<Token<'source, 'filename>>, LexerError<'filename>> {
+pub(crate) fn tokenize<'a>(
+    filename: &'a std::path::Path,
+    source: &'a str,
+) -> Result<Vec<Token<'a>>, LexerError<'a>> {
     let mut state = LexerState::new(filename, source)?;
     let mut tokens = Vec::new();
     while !state.is_end_of_input() {

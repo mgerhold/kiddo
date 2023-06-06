@@ -1,16 +1,14 @@
+use crate::parser::parse;
 use lexer::tokenize;
-use std::error::Error;
-
-mod token;
 
 mod lexer;
+mod parser;
+mod token;
 
-fn main() -> Result<(), Box<dyn Error>> {
-    let filename = std::path::Path::new("test.ceat");
-    let source = std::fs::read_to_string(filename)?;
-    let tokens = tokenize(filename, &source)?;
-    for token in tokens {
-        println!("{token}");
-    }
-    Ok(())
+fn main() {
+    let filename = std::path::PathBuf::from("test.ceat");
+    let source = std::fs::read_to_string(&filename).unwrap();
+    let tokens = tokenize(&filename, &source).unwrap();
+    let module = parse(&tokens).unwrap();
+    dbg!(module);
 }

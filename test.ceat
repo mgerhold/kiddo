@@ -1,0 +1,73 @@
+import std::terminal;
+import std::terminal as term;
+import std::terminal::print as p;
+import ::std::terminal;
+import ::std::terminal as t;
+from std::terminal import print;
+from std import terminal as t;
+
+/*struct S {
+    number: U32,
+    another: U32,
+}
+
+function f(this: ->S, n: U32) ~> Nothing {
+    this!.number = this!.number + n;
+}
+
+function main() -> Nothing {
+    let n = 42;
+    let m: mutable = 42;
+    let o: U32 = 42;
+    let p: mutable U32 = 42;
+
+    let pointer = n@; // type "->const U32"
+    let pointer2 = m@; // type "->mutable U32"
+
+    std::terminal::print(n, );
+
+    let s: mutable = S{ number: 10, another: 42 };
+
+    f(s@, 10);
+    s@.f(10);
+
+    let a = [1, 2, 3, 4, ]; // type "[U32; 4]"
+    let a2 = [10; 4]; // == "[10, 10, 10, 10]", type "[U32, 4]"
+
+    m = 10;
+    print(m);
+
+    term::print(pointer!);
+    terminal::print(42);
+
+    if m > 5 {
+        // ...
+    } else if m < 3 {
+        // ...
+    } else {
+
+    }
+
+    loop {
+        break;
+        continue;
+    }
+
+    while m > 3 {
+        m = m - 1;
+    }
+
+    let b: Bool = true;
+    let u8: U8 = 10;
+    let u16: U16 = 10;
+    let u32: U32 = 10;
+    let u64: U64 = 10;
+    let i8: I8 = -10;
+    let i16: I16 = -10;
+    let i32: I32 = -10;
+    let i64: I64 = -10;
+    let char: Char = 'a'; // 32 bit
+    let newline = '\n';
+    let n: Nothing = nothing;
+}
+*/

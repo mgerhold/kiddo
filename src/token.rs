@@ -1,6 +1,6 @@
 use std::fmt::Display;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct SourceLocation<'filename> {
     pub filename: &'filename std::path::Path,
     pub line: usize,
@@ -20,7 +20,7 @@ impl Display for SourceLocation<'_> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub(crate) enum TokenType {
     LeftCurlyBracket,
     RightCurlyBracket,
@@ -77,14 +77,14 @@ pub(crate) enum TokenType {
     EndOfInput,
 }
 
-#[derive(Debug)]
-pub(crate) struct Token<'source, 'filename> {
-    pub lexeme: &'source str,
-    pub source_location: SourceLocation<'filename>,
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Token<'a> {
+    pub lexeme: &'a str,
+    pub source_location: SourceLocation<'a>,
     pub type_: TokenType,
 }
 
-impl Display for Token<'_, '_> {
+impl Display for Token<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
