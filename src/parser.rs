@@ -71,6 +71,10 @@ impl<'a> ParserState<'a> {
     }
 
     fn module(&mut self) -> Result<Module<'a>, ParserError> {
+        /*
+        Module:
+            (imports=Imports)
+         */
         let imports = self.imports()?; // maybe empty
         assert!(self.current().is_some());
         match self.current() {
@@ -86,6 +90,10 @@ impl<'a> ParserState<'a> {
     }
 
     fn imports(&mut self) -> Result<Vec<Import<'a>>, ParserError> {
+        /*
+        Imports:
+            (imports+=Import)*
+         */
         let mut imports = Vec::new();
         while let Some(Token {
             type_: TokenType::Import | TokenType::From,
@@ -144,6 +152,10 @@ impl<'a> ParserState<'a> {
     }
 
     fn identifier(&mut self) -> Result<Identifier<'a>, ParserError> {
+        /*
+        Identifier:
+            token=IDENTIFIER
+         */
         let identifier =
             Identifier::try_from(self.current().expect("must at least be EndOfInput"))?;
         self.advance(1);
