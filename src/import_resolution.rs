@@ -58,20 +58,20 @@ pub(crate) fn resolve_imports(
                 ..
             } => (what, directories_for_absolute_imports),
             Import::Import {
-                what: what @ QualifiedName::Relative { .. },
+                what: what_or_where @ QualifiedName::Relative { .. },
             }
             | Import::ImportAs {
-                what: what @ QualifiedName::Relative { .. },
+                what: what_or_where @ QualifiedName::Relative { .. },
                 ..
             }
             | Import::FromImport {
-                where_: what @ QualifiedName::Relative { .. },
+                where_: what_or_where @ QualifiedName::Relative { .. },
                 ..
             }
             | Import::FromImportAs {
-                where_: what @ QualifiedName::Relative { .. },
+                where_: what_or_where @ QualifiedName::Relative { .. },
                 ..
-            } => (what, directories_for_relative_imports),
+            } => (what_or_where, directories_for_relative_imports),
         };
         let path_to_search = path_from_name(what);
         let path = find_path(&path_to_search, possible_root_directories).ok_or_else(|| {
