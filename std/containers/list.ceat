@@ -1,0 +1,23 @@
+/********************************
+ *                              *
+ *              list            *
+ *                              *
+ ********************************/
+
+import dyn_array; // circular import
+import dyn_array as darray; // circular import
+import ::std::containers::dyn_array; // circular import
+import ::std::containers::dyn_array as darray; // circular import
+
+struct ListPointer {
+    pointer: SomePointer,
+}
+
+struct List {
+    head: ListPointer,
+    tail: ListPointer,
+    size: Usize,
+}
+
+
+/* end of file */

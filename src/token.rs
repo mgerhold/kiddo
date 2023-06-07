@@ -1,14 +1,25 @@
 use std::fmt::Display;
+use std::path::Path;
+use std::rc::Rc;
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct SourceLocation<'filename> {
-    pub filename: &'filename std::path::Path,
+#[derive(Debug, Clone)]
+pub(crate) struct SourceLocation {
+    pub filename: Rc<Path>,
+    pub source: Rc<str>,
     pub line: usize,
     pub column: usize,
     pub num_chars: usize,
+    pub byte_offset: usize,
+    pub num_bytes: usize,
 }
 
-impl Display for SourceLocation<'_> {
+impl SourceLocation {
+    fn lexeme(&self) -> &str {
+        &self.source[self.byte_offset..][..self.num_bytes]
+    }
+}
+
+impl Display for SourceLocation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -77,19 +88,24 @@ pub(crate) enum TokenType {
     EndOfInput,
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct Token<'a> {
-    pub lexeme: &'a str,
-    pub source_location: SourceLocation<'a>,
+#[derive(Debug, Clone)]
+pub(crate) struct Token {
+    pub source_location: SourceLocation,
     pub type_: TokenType,
 }
 
-impl Display for Token<'_> {
+impl Token {
+    pub(crate) fn lexeme(&self) -> &str {
+        self.source_location.lexeme()
+    }
+}
+
+impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "'{}' ({:?}, {}:{}:{}, {} chars)",
-            self.lexeme,
+            self.lexeme(),
             self.type_,
             self.source_location.filename.display(),
             self.source_location.line,

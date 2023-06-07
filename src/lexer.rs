@@ -1,3 +1,5 @@
+use std::path::Path;
+use std::rc::Rc;
 use std::{error::Error, fmt};
 
 use unicode_width::UnicodeWidthChar;
@@ -6,42 +8,39 @@ use unicode_xid::UnicodeXID;
 use crate::token::{SourceLocation, Token, TokenType};
 
 #[derive(Debug)]
-pub(crate) enum LexerError<'filename> {
-    InvalidInput(SourceLocation<'filename>, char),
-    UnterminatedMultilineComment(SourceLocation<'filename>),
-    ExpectedBinaryDigit(SourceLocation<'filename>),
-    ExpectedOctalDigit(SourceLocation<'filename>),
-    ExpectedDecimalDigit(SourceLocation<'filename>),
-    ExpectedChar(SourceLocation<'filename>),
-    InvalidEscapeSequence(SourceLocation<'filename>, char),
+pub(crate) enum LexerError {
+    InvalidInput(SourceLocation, char),
+    UnterminatedMultilineComment(SourceLocation),
+    ExpectedBinaryDigit(SourceLocation),
+    ExpectedOctalDigit(SourceLocation),
+    ExpectedDecimalDigit(SourceLocation),
+    ExpectedChar(SourceLocation),
+    InvalidEscapeSequence(SourceLocation, char),
     UnexpectedCharacter {
-        source_location: SourceLocation<'filename>,
+        source_location: SourceLocation,
         expected: char,
         actual: char,
     },
 }
 
-impl Error for LexerError<'_> {}
+impl Error for LexerError {}
 
-impl fmt::Display for LexerError<'_> {
+impl fmt::Display for LexerError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
     }
 }
 
-struct LexerState<'a> {
-    filename: &'a std::path::Path,
-    source: &'a str,
+struct LexerState {
+    filename: Rc<Path>,
+    source: Rc<str>,
     offset: usize,
     line: usize,
     column: usize,
 }
 
-impl<'a> LexerState<'a> {
-    fn new(
-        filename: &'a std::path::Path,
-        source: &'a str,
-    ) -> Result<Self, LexerError<'a>> {
+impl LexerState {
+    fn new(filename: Rc<Path>, source: Rc<str>) -> Result<Self, LexerError> {
         Ok(Self {
             filename,
             source,
@@ -88,24 +87,24 @@ impl<'a> LexerState<'a> {
         result
     }
 
-    fn lexeme(&self, start_offset: usize, num_bytes: usize) -> &'a str {
+    fn lexeme(&self, start_offset: usize, num_bytes: usize) -> &str {
         &self.source[start_offset..][..num_bytes]
     }
 
-    fn source_location(&self, num_chars: usize) -> SourceLocation<'a> {
+    fn source_location(&self, num_chars: usize, num_bytes: usize) -> SourceLocation {
         SourceLocation {
-            filename: self.filename,
+            filename: Rc::clone(&self.filename),
+            source: Rc::clone(&self.source),
             line: self.line,
             column: self.column,
             num_chars,
+            byte_offset: self.offset,
+            num_bytes,
         }
     }
 }
 
-pub(crate) fn tokenize<'a>(
-    filename: &'a std::path::Path,
-    source: &'a str,
-) -> Result<Vec<Token<'a>>, LexerError<'a>> {
+pub(crate) fn tokenize(filename: Rc<Path>, source: Rc<str>) -> Result<Vec<Token>, LexerError> {
     let mut state = LexerState::new(filename, source)?;
     let mut tokens = Vec::new();
     while !state.is_end_of_input() {
@@ -129,8 +128,7 @@ pub(crate) fn tokenize<'a>(
 
         if let Some(type_) = single_char_token {
             tokens.push(Token {
-                lexeme: state.lexeme(state.offset, 1),
-                source_location: state.source_location(1),
+                source_location: state.source_location(1, 1),
                 type_,
             });
             state.advance();
@@ -140,15 +138,13 @@ pub(crate) fn tokenize<'a>(
         if state.current() == '-' {
             if state.peek() == '>' {
                 tokens.push(Token {
-                    lexeme: state.lexeme(state.offset, 2),
-                    source_location: state.source_location(2),
+                    source_location: state.source_location(2, 2),
                     type_: TokenType::MinusGreaterThan,
                 });
                 state.advance();
             } else {
                 tokens.push(Token {
-                    lexeme: state.lexeme(state.offset, 1),
-                    source_location: state.source_location(1),
+                    source_location: state.source_location(1, 1),
                     type_: TokenType::Minus,
                 });
             }
@@ -159,15 +155,13 @@ pub(crate) fn tokenize<'a>(
         if state.current() == '>' {
             if state.peek() == '=' {
                 tokens.push(Token {
-                    lexeme: state.lexeme(state.offset, 2),
-                    source_location: state.source_location(2),
+                    source_location: state.source_location(2, 2),
                     type_: TokenType::GreaterThanEquals,
                 });
                 state.advance();
             } else {
                 tokens.push(Token {
-                    lexeme: state.lexeme(state.offset, 1),
-                    source_location: state.source_location(1),
+                    source_location: state.source_location(1, 1),
                     type_: TokenType::GreaterThan,
                 })
             }
@@ -178,15 +172,13 @@ pub(crate) fn tokenize<'a>(
         if state.current() == '<' {
             if state.peek() == '=' {
                 tokens.push(Token {
-                    lexeme: state.lexeme(state.offset, 2),
-                    source_location: state.source_location(2),
+                    source_location: state.source_location(2, 2),
                     type_: TokenType::LessThanEquals,
                 });
                 state.advance();
             } else {
                 tokens.push(Token {
-                    lexeme: state.lexeme(state.offset, 1),
-                    source_location: state.source_location(1),
+                    source_location: state.source_location(1, 1),
                     type_: TokenType::LessThan,
                 })
             }
@@ -196,8 +188,7 @@ pub(crate) fn tokenize<'a>(
 
         if state.current() == '~' && state.peek() == '>' {
             tokens.push(Token {
-                lexeme: state.lexeme(state.offset, 2),
-                source_location: state.source_location(2),
+                source_location: state.source_location(2, 2),
                 type_: TokenType::TildeGreaterThan,
             });
             state.advance();
@@ -208,15 +199,13 @@ pub(crate) fn tokenize<'a>(
         if state.current() == ':' {
             if state.peek() == ':' {
                 tokens.push(Token {
-                    lexeme: state.lexeme(state.offset, 2),
-                    source_location: state.source_location(2),
+                    source_location: state.source_location(2, 2),
                     type_: TokenType::ColonColon,
                 });
                 state.advance();
             } else {
                 tokens.push(Token {
-                    lexeme: state.lexeme(state.offset, 1),
-                    source_location: state.source_location(1),
+                    source_location: state.source_location(1, 1),
                     type_: TokenType::Colon,
                 })
             }
@@ -237,25 +226,27 @@ pub(crate) fn tokenize<'a>(
                 c.is_ascii_digit() || ('A'..='F').contains(&c) || ('a'..='f').contains(&c)
             };
 
-            let mut source_location = state.source_location(0);
+            let start_source_location = state.source_location(0, 0);
             let start_offset = state.offset;
             if is_binary_number {
                 state.advance(); // consume '0'
                 state.advance(); // consume 'b'
                 if !is_binary_digit(state.current()) {
-                    return Err(LexerError::ExpectedBinaryDigit(state.source_location(1)));
+                    return Err(LexerError::ExpectedBinaryDigit(state.source_location(1, 0)));
                 }
             } else if is_octal_number {
                 state.advance(); // consume '0'
                 state.advance(); // consume 'o'
                 if !is_octal_digit(state.current()) {
-                    return Err(LexerError::ExpectedOctalDigit(state.source_location(1)));
+                    return Err(LexerError::ExpectedOctalDigit(state.source_location(1, 0)));
                 }
             } else if is_hex_number {
                 state.advance(); // consume '0'
                 state.advance(); // consume 'x'
                 if !is_hex_digit(state.current()) {
-                    return Err(LexerError::ExpectedDecimalDigit(state.source_location(1)));
+                    return Err(LexerError::ExpectedDecimalDigit(
+                        state.source_location(1, 1),
+                    ));
                 }
             } else {
                 assert!(is_decimal_number);
@@ -272,35 +263,43 @@ pub(crate) fn tokenize<'a>(
 
             if is_binary_number
                 && (is_octal_digit(state.current())
-                || is_hex_digit(state.current())
-                || state.current().is_ascii_digit())
+                    || is_hex_digit(state.current())
+                    || state.current().is_ascii_digit())
             {
-                return Err(LexerError::ExpectedBinaryDigit(state.source_location(1)));
+                return Err(LexerError::ExpectedBinaryDigit(state.source_location(1, 1)));
             }
 
             if is_octal_number
                 && (is_hex_digit(state.current()) || state.current().is_ascii_digit())
             {
-                return Err(LexerError::ExpectedOctalDigit(state.source_location(1)));
+                return Err(LexerError::ExpectedOctalDigit(state.source_location(1, 1)));
             }
 
             if is_decimal_number && is_hex_digit(state.current()) {
-                return Err(LexerError::ExpectedDecimalDigit(state.source_location(1)));
+                return Err(LexerError::ExpectedDecimalDigit(
+                    state.source_location(1, 1),
+                ));
             }
 
             let end_offset = state.offset;
             let num_bytes = end_offset - start_offset;
-            source_location.num_chars = num_bytes; // because each ASCII digit is 1 byte in size
             tokens.push(Token {
-                lexeme: state.lexeme(start_offset, num_bytes),
-                source_location,
+                source_location: SourceLocation {
+                    filename: start_source_location.filename,
+                    source: start_source_location.source,
+                    line: start_source_location.line,
+                    column: start_source_location.column,
+                    num_chars: num_bytes, // because each ASCII digit is 1 byte in size
+                    byte_offset: start_source_location.byte_offset,
+                    num_bytes,
+                },
                 type_: TokenType::Integer,
             });
             continue;
         }
 
         if state.current().is_xid_start() {
-            let mut source_location = state.source_location(1);
+            let start_source_location = state.source_location(0, 0);
             let start_offset = state.offset;
             let mut num_chars = state.current().width().unwrap(); // unwrap is safe since width() doesn't return None for xid_start chars
             state.advance();
@@ -310,7 +309,6 @@ pub(crate) fn tokenize<'a>(
             }
             let end_offset = state.offset;
             let num_bytes = end_offset - start_offset;
-            source_location.num_chars = num_chars;
 
             let lexeme = state.lexeme(start_offset, num_bytes);
 
@@ -340,27 +338,36 @@ pub(crate) fn tokenize<'a>(
             };
 
             tokens.push(Token {
-                lexeme,
-                source_location,
+                source_location: SourceLocation {
+                    filename: start_source_location.filename,
+                    source: start_source_location.source,
+                    line: start_source_location.line,
+                    column: start_source_location.column,
+                    num_chars,
+                    byte_offset: start_source_location.byte_offset,
+                    num_bytes,
+                },
                 type_,
             });
             continue;
         }
 
         if state.current() == '\'' {
-            let is_valid_escape_character = |c: char| { ['t', 'n', 'r', 'v', '\\', '\''].contains(&c) };
-
-            let source_location = state.source_location(0);
+            let is_valid_escape_character = |c: char| ['t', 'n', 'r', 'v', '\\', '\''].contains(&c);
+            let start_source_location = state.source_location(0, 0);
             let start_offset = state.offset;
             state.advance(); // consume opening '
             if state.current() == '\'' {
-                return Err(LexerError::ExpectedChar(state.source_location(1)));
+                return Err(LexerError::ExpectedChar(state.source_location(1, 1)));
             }
             let is_escape_sequence = state.current() == '\\';
             if is_escape_sequence {
                 if !is_valid_escape_character(state.peek()) {
                     let length = state.peek().width().unwrap_or(0);
-                    return Err(LexerError::InvalidEscapeSequence(state.source_location(1 + length), state.peek()));
+                    return Err(LexerError::InvalidEscapeSequence(
+                        state.source_location(1 + length, 1 + state.peek().len_utf8()),
+                        state.peek(),
+                    ));
                 }
                 state.advance(); // consume '\'
             }
@@ -368,7 +375,7 @@ pub(crate) fn tokenize<'a>(
             if state.current() != '\'' {
                 let length = state.peek().width().unwrap_or(0);
                 return Err(LexerError::UnexpectedCharacter {
-                    source_location: state.source_location(length),
+                    source_location: state.source_location(length, state.peek().len_utf8()),
                     expected: '\'',
                     actual: state.current(),
                 });
@@ -376,9 +383,17 @@ pub(crate) fn tokenize<'a>(
             state.advance(); // consume closing '
             let end_offset = state.offset;
             let num_bytes = end_offset - start_offset;
-            tokens.push(Token{
-                lexeme: state.lexeme(start_offset, num_bytes),
-                source_location,
+            tokens.push(Token {
+                source_location: SourceLocation {
+                    filename: start_source_location.filename,
+                    source: start_source_location.source,
+                    line: start_source_location.line,
+                    column: start_source_location.column,
+                    // num_chars = starting and ending single quotes + char (can be escape sequence)
+                    num_chars: if is_escape_sequence { 4 } else { 3 },
+                    byte_offset: start_source_location.byte_offset,
+                    num_bytes,
+                },
                 type_: TokenType::Char,
             });
             continue;
@@ -396,7 +411,7 @@ pub(crate) fn tokenize<'a>(
             } else if state.peek() == '*' {
                 // multi line comment
                 let mut depth: usize = 1;
-                let source_location = state.source_location(2);
+                let source_location = state.source_location(2, 2);
                 state.advance();
                 state.advance();
                 while !state.is_end_of_input() {
@@ -420,8 +435,7 @@ pub(crate) fn tokenize<'a>(
                 }
             } else {
                 tokens.push(Token {
-                    lexeme: state.lexeme(state.offset, 1),
-                    source_location: state.source_location(1),
+                    source_location: state.source_location(1, 1),
                     type_: TokenType::Slash,
                 });
                 state.advance();
@@ -434,12 +448,14 @@ pub(crate) fn tokenize<'a>(
             continue;
         }
 
-        return Err(LexerError::InvalidInput(state.source_location(1), state.current()));
+        return Err(LexerError::InvalidInput(
+            state.source_location(1, state.current().len_utf8()),
+            state.current(),
+        ));
     }
 
     tokens.push(Token {
-        lexeme: "",
-        source_location: state.source_location(0),
+        source_location: state.source_location(0, 0),
         type_: TokenType::EndOfInput,
     });
     Ok(tokens)

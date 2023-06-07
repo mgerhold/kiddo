@@ -1,0 +1,2 @@
+import terminal; // self-import
+import ::std::terminal as t; // self-import

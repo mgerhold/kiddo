@@ -3,10 +3,11 @@ use crate::parser::ir_parsed::{
     Definition, Identifier, Import, Module, QualifiedName, StructDefinition, StructMember,
 };
 use crate::token::{Token, TokenType};
-use std::any::Any;
+use std::ops::Deref;
+use std::rc::Rc;
 
-mod errors;
-mod ir_parsed;
+pub(crate) mod errors;
+pub(crate) mod ir_parsed;
 
 fn ends_with_identifier(tokens: &[Token]) -> Result<(), ParserError> {
     match tokens {
@@ -25,28 +26,28 @@ fn ends_with_identifier(tokens: &[Token]) -> Result<(), ParserError> {
     }
 }
 
-struct ParserState<'a> {
-    tokens: &'a [Token<'a>],
+struct ParserState {
+    tokens: Rc<[Token]>,
     current_index: usize,
 }
 
-impl<'a> ParserState<'a> {
-    fn new(tokens: &'a [Token<'a>]) -> Self {
+impl ParserState {
+    fn new(tokens: Rc<[Token]>) -> Self {
         Self {
             tokens,
             current_index: 0,
         }
     }
 
-    fn current(&self) -> Option<Token<'a>> {
+    fn current(&self) -> Option<Token> {
         self.tokens.get(self.current_index).cloned()
     }
 
-    fn peek(&self) -> Option<Token<'a>> {
+    fn peek(&self) -> Option<Token> {
         self.tokens.get(self.current_index + 1).cloned()
     }
 
-    fn expect(&mut self, type_: TokenType) -> Result<Token<'a>, ParserError> {
+    fn expect(&mut self, type_: TokenType) -> Result<Token, ParserError> {
         let current_token_type = self.current().map(|token| token.type_);
         self.consume(type_)
             .ok_or_else(move || ParserError::TokenTypeMismatch {
@@ -55,7 +56,7 @@ impl<'a> ParserState<'a> {
             })
     }
 
-    fn consume(&mut self, type_: TokenType) -> Option<Token<'a>> {
+    fn consume(&mut self, type_: TokenType) -> Option<Token> {
         let result = self.current().expect("should at least be EndOfInput");
         if result.type_ == type_ {
             self.advance(1);
@@ -73,7 +74,7 @@ impl<'a> ParserState<'a> {
         self.current_index += amount
     }
 
-    fn module(&mut self) -> Result<Module<'a>, ParserError> {
+    fn module(&mut self) -> Result<Module, ParserError> {
         /*
         Module:
             (imports=Imports)
@@ -98,7 +99,7 @@ impl<'a> ParserState<'a> {
         }
     }
 
-    fn imports(&mut self) -> Result<Vec<Import<'a>>, ParserError> {
+    fn imports(&mut self) -> Result<Vec<Import>, ParserError> {
         /*
         Imports:
             (imports+=Import)*
@@ -114,7 +115,7 @@ impl<'a> ParserState<'a> {
         Ok(imports)
     }
 
-    fn import(&mut self) -> Result<Import<'a>, ParserError> {
+    fn import(&mut self) -> Result<Import, ParserError> {
         /*
         Import:
             'import' what=QualifiedName ('as' Identifier)? ';'
@@ -160,7 +161,7 @@ impl<'a> ParserState<'a> {
         Ok(import)
     }
 
-    fn definitions(&mut self) -> Result<Vec<Definition<'a>>, ParserError> {
+    fn definitions(&mut self) -> Result<Vec<Definition>, ParserError> {
         let mut result = Vec::new();
         while let Some(
             token @ Token {
@@ -179,7 +180,7 @@ impl<'a> ParserState<'a> {
         Ok(result)
     }
 
-    fn struct_definition(&mut self) -> Result<StructDefinition<'a>, ParserError> {
+    fn struct_definition(&mut self) -> Result<StructDefinition, ParserError> {
         /*
         StructDefinition:
             'struct' (name=Identifier) '{'
@@ -230,7 +231,7 @@ impl<'a> ParserState<'a> {
         Ok(StructDefinition { name, members })
     }
 
-    fn identifier(&mut self) -> Result<Identifier<'a>, ParserError> {
+    fn identifier(&mut self) -> Result<Identifier, ParserError> {
         /*
         Identifier:
             token=IDENTIFIER
@@ -241,25 +242,27 @@ impl<'a> ParserState<'a> {
         Ok(identifier)
     }
 
-    fn consume_until_one_of(&mut self, types: &[TokenType]) -> &'a [Token<'a>] {
-        let consumable_tokens = self.tokens[self.current_index..]
+    fn consume_until_one_of(&mut self, types: &[TokenType]) -> Rc<[Token]> {
+        let consumable_tokens: Rc<[Token]> = self.tokens[self.current_index..]
             .split(|token| types.contains(&token.type_))
             .next()
-            .expect("split does always return an iterator with at least one element");
+            .expect("split does always return an iterator with at least one element")
+            .into();
         self.advance(consumable_tokens.len());
         consumable_tokens
     }
 
-    fn consume_until_none_of(&mut self, types: &[TokenType]) -> &'a [Token<'a>] {
-        let consumable_tokens = self.tokens[self.current_index..]
+    fn consume_until_none_of(&mut self, types: &[TokenType]) -> Rc<[Token]> {
+        let consumable_tokens: Rc<[Token]> = self.tokens[self.current_index..]
             .split(|token| !types.contains(&token.type_))
             .next()
-            .expect("split does always return an iterator with at least one element");
+            .expect("split does always return an iterator with at least one element")
+            .into();
         self.advance(consumable_tokens.len());
         consumable_tokens
     }
 
-    fn qualified_name(&mut self) -> Result<QualifiedName<'a>, ParserError> {
+    fn qualified_name(&mut self) -> Result<QualifiedName, ParserError> {
         /*
         QualifiedName:
             ('::')? tokens+=Identifier ('::' tokens+=Identifier)*
@@ -269,7 +272,8 @@ impl<'a> ParserState<'a> {
                 type_: TokenType::ColonColon | TokenType::Identifier,
                 ..
             }) => QualifiedName::try_from(
-                self.consume_until_none_of(&[TokenType::ColonColon, TokenType::Identifier]),
+                self.consume_until_none_of(&[TokenType::ColonColon, TokenType::Identifier])
+                    .deref(),
             ),
             Some(token) => Err(ParserError::TokenTypeMismatch {
                 expected: vec![TokenType::Identifier, TokenType::ColonColon],
@@ -306,6 +310,6 @@ impl<'a> ParserState<'a> {
     }
 }
 
-pub(crate) fn parse<'a>(tokens: &'a [Token<'a>]) -> Result<Module<'a>, ParserError> {
+pub(crate) fn parse(tokens: Rc<[Token]>) -> Result<Module, ParserError> {
     ParserState::new(tokens).module()
 }

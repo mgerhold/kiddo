@@ -1,10 +1,11 @@
 import std::terminal;
 import std::terminal as term;
-import std::terminal::print as p;
 import ::std::terminal;
 import ::std::terminal as t;
 from std::terminal import print;
-from std import terminal as t;
+from std::terminal import print as p;
+import std::containers::dyn_array as darray;
+import std::containers::list as list;
 
 struct S {
     number: U32,
