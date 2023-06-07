@@ -1,9 +1,11 @@
+use crate::lexer::tokenize;
 use crate::parser::errors::ParserError;
 use crate::parser::ir_parsed::{
     Definition, Identifier, Import, Module, QualifiedName, StructDefinition, StructMember,
 };
 use crate::token::{Token, TokenType};
 use std::ops::Deref;
+use std::path::Path;
 use std::rc::Rc;
 
 pub(crate) mod errors;
@@ -310,6 +312,11 @@ impl ParserState {
     }
 }
 
-pub(crate) fn parse(tokens: Rc<[Token]>) -> Result<Module, ParserError> {
+fn parse(tokens: Rc<[Token]>) -> Result<Module, ParserError> {
     ParserState::new(tokens).module()
+}
+
+pub(crate) fn parse_module(filename: Rc<Path>, source: Rc<str>) -> Result<Module, ParserError> {
+    let tokens: Rc<[Token]> = tokenize(filename, source).unwrap().into(); // todo: handle lexer error
+    parse(tokens)
 }
