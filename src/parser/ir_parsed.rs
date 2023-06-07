@@ -141,7 +141,7 @@ impl QualifiedName {
     }
 }
 
-impl<'a> TryFrom<&[Token]> for QualifiedName {
+impl TryFrom<&[Token]> for QualifiedName {
     type Error = ParserError;
 
     fn try_from(tokens: &[Token]) -> Result<Self, Self::Error> {

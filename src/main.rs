@@ -152,7 +152,7 @@ fn resolve_all_imports(
     Ok(all_modules)
 }
 
-fn parse_module<'a>(filename: Rc<Path>, source: Rc<str>) -> Result<Module, ParserError> {
+fn parse_module(filename: Rc<Path>, source: Rc<str>) -> Result<Module, ParserError> {
     let tokens: Rc<[Token]> = tokenize(filename, source).unwrap().into(); // todo: handle lexer error
     parse(tokens)
 }
