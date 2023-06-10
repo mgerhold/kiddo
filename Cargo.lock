@@ -8,15 +8,15 @@ version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72fe02fc62033df9ba41cba57ee19acf5e742511a140c7dbc3a873e19a19a1bd"
 dependencies = [
-    "unicode-width",
-    "yansi",
+ "unicode-width",
+ "yansi",
 ]
 
 [[package]]
 name = "kiddo"
 version = "0.1.0"
 dependencies = [
-    "ariadne",
+ "ariadne",
  "thiserror",
  "unicode-width",
  "unicode-xid",

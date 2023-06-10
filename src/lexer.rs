@@ -2,7 +2,6 @@ use std::path::Path;
 use std::rc::Rc;
 use std::{error::Error, fmt};
 
-use ariadne::{Label, Report, ReportKind, Source};
 use unicode_xid::UnicodeXID;
 
 use crate::parser::errors::{print_error, ErrorReport};
