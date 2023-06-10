@@ -121,8 +121,8 @@ impl ParserState {
     fn import(&mut self) -> Result<Import, ParserError> {
         /*
         Import:
-            'import' what=QualifiedName ('as' Identifier)? ';'
-            | 'from' where=QualifiedName 'import' symbol=Identifier ('as' Identifier)? ';'
+            'import' what=QualifiedName ('as' as=Identifier)? ';'
+            | 'from' where=QualifiedName 'import' symbol=Identifier ('as' as=Identifier)? ';'
          */
         assert!(matches!(
             self.current(),
