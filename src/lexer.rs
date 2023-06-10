@@ -2,13 +2,14 @@ use std::path::Path;
 use std::rc::Rc;
 use std::{error::Error, fmt};
 
-use unicode_width::UnicodeWidthChar;
+use ariadne::{Label, Report, ReportKind, Source};
 use unicode_xid::UnicodeXID;
 
+use crate::parser::errors::{print_error, ErrorReport};
 use crate::token::{SourceLocation, Token, TokenType};
 
 #[derive(Debug)]
-pub(crate) enum LexerError {
+pub enum LexerError {
     InvalidInput(SourceLocation, char),
     UnterminatedMultilineComment(SourceLocation),
     ExpectedBinaryDigit(SourceLocation),
@@ -21,6 +22,7 @@ pub(crate) enum LexerError {
         expected: char,
         actual: char,
     },
+    FailedToReadFile(std::io::Error),
 }
 
 impl Error for LexerError {}
@@ -31,12 +33,52 @@ impl fmt::Display for LexerError {
     }
 }
 
+impl ErrorReport for LexerError {
+    fn print_report(&self) {
+        match self {
+            LexerError::InvalidInput(location, char) => {
+                print_error(
+                    location,
+                    format!("invalid input '{char}'"),
+                    "invalid character".to_string(),
+                );
+            }
+            LexerError::UnterminatedMultilineComment(location) => {
+                print_error(
+                    location,
+                    "unterminated multiline comment".to_string(),
+                    "multiline comment starts here".to_string(),
+                );
+            }
+            LexerError::ExpectedBinaryDigit(_) => {
+                todo!()
+            }
+            LexerError::ExpectedOctalDigit(_) => {
+                todo!()
+            }
+            LexerError::ExpectedDecimalDigit(_) => {
+                todo!()
+            }
+            LexerError::ExpectedChar(_) => {
+                todo!()
+            }
+            LexerError::InvalidEscapeSequence(_, _) => {
+                todo!()
+            }
+            LexerError::UnexpectedCharacter { .. } => {
+                todo!()
+            }
+            LexerError::FailedToReadFile(_) => {
+                todo!()
+            }
+        }
+    }
+}
+
 struct LexerState {
     filename: Rc<Path>,
     source: Rc<str>,
     offset: usize,
-    line: usize,
-    column: usize,
 }
 
 impl LexerState {
@@ -45,8 +87,6 @@ impl LexerState {
             filename,
             source,
             offset: 0,
-            line: 1,
-            column: 1,
         })
     }
 
@@ -79,11 +119,6 @@ impl LexerState {
         let result = self.current();
         let current_size = result.len_utf8();
         self.offset += current_size;
-        self.column += result.width().unwrap_or(0);
-        if result == '\n' {
-            self.column = 1;
-            self.line += 1;
-        }
         result
     }
 
@@ -91,16 +126,22 @@ impl LexerState {
         &self.source[start_offset..][..num_bytes]
     }
 
-    fn source_location(&self, num_chars: usize, num_bytes: usize) -> SourceLocation {
-        SourceLocation {
-            filename: Rc::clone(&self.filename),
-            source: Rc::clone(&self.source),
-            line: self.line,
-            column: self.column,
-            num_chars,
-            byte_offset: self.offset,
+    fn source_location_at(&self, byte_offset: usize, num_bytes: usize) -> SourceLocation {
+        SourceLocation::new(
+            Rc::clone(&self.filename),
+            Rc::clone(&self.source),
+            byte_offset,
             num_bytes,
-        }
+        )
+    }
+
+    fn current_source_location(&self, num_bytes: usize) -> SourceLocation {
+        SourceLocation::new(
+            Rc::clone(&self.filename),
+            Rc::clone(&self.source),
+            self.offset,
+            num_bytes,
+        )
     }
 }
 
@@ -128,7 +169,7 @@ pub(crate) fn tokenize(filename: Rc<Path>, source: Rc<str>) -> Result<Vec<Token>
 
         if let Some(type_) = single_char_token {
             tokens.push(Token {
-                source_location: state.source_location(1, 1),
+                source_location: state.current_source_location(1),
                 type_,
             });
             state.advance();
@@ -138,13 +179,13 @@ pub(crate) fn tokenize(filename: Rc<Path>, source: Rc<str>) -> Result<Vec<Token>
         if state.current() == '-' {
             if state.peek() == '>' {
                 tokens.push(Token {
-                    source_location: state.source_location(2, 2),
+                    source_location: state.current_source_location(2),
                     type_: TokenType::MinusGreaterThan,
                 });
                 state.advance();
             } else {
                 tokens.push(Token {
-                    source_location: state.source_location(1, 1),
+                    source_location: state.current_source_location(1),
                     type_: TokenType::Minus,
                 });
             }
@@ -155,13 +196,13 @@ pub(crate) fn tokenize(filename: Rc<Path>, source: Rc<str>) -> Result<Vec<Token>
         if state.current() == '>' {
             if state.peek() == '=' {
                 tokens.push(Token {
-                    source_location: state.source_location(2, 2),
+                    source_location: state.current_source_location(2),
                     type_: TokenType::GreaterThanEquals,
                 });
                 state.advance();
             } else {
                 tokens.push(Token {
-                    source_location: state.source_location(1, 1),
+                    source_location: state.current_source_location(1),
                     type_: TokenType::GreaterThan,
                 })
             }
@@ -172,13 +213,13 @@ pub(crate) fn tokenize(filename: Rc<Path>, source: Rc<str>) -> Result<Vec<Token>
         if state.current() == '<' {
             if state.peek() == '=' {
                 tokens.push(Token {
-                    source_location: state.source_location(2, 2),
+                    source_location: state.current_source_location(2),
                     type_: TokenType::LessThanEquals,
                 });
                 state.advance();
             } else {
                 tokens.push(Token {
-                    source_location: state.source_location(1, 1),
+                    source_location: state.current_source_location(1),
                     type_: TokenType::LessThan,
                 })
             }
@@ -188,7 +229,7 @@ pub(crate) fn tokenize(filename: Rc<Path>, source: Rc<str>) -> Result<Vec<Token>
 
         if state.current() == '~' && state.peek() == '>' {
             tokens.push(Token {
-                source_location: state.source_location(2, 2),
+                source_location: state.current_source_location(2),
                 type_: TokenType::TildeGreaterThan,
             });
             state.advance();
@@ -199,13 +240,13 @@ pub(crate) fn tokenize(filename: Rc<Path>, source: Rc<str>) -> Result<Vec<Token>
         if state.current() == ':' {
             if state.peek() == ':' {
                 tokens.push(Token {
-                    source_location: state.source_location(2, 2),
+                    source_location: state.current_source_location(2),
                     type_: TokenType::ColonColon,
                 });
                 state.advance();
             } else {
                 tokens.push(Token {
-                    source_location: state.source_location(1, 1),
+                    source_location: state.current_source_location(1),
                     type_: TokenType::Colon,
                 })
             }
@@ -226,26 +267,29 @@ pub(crate) fn tokenize(filename: Rc<Path>, source: Rc<str>) -> Result<Vec<Token>
                 c.is_ascii_digit() || ('A'..='F').contains(&c) || ('a'..='f').contains(&c)
             };
 
-            let start_source_location = state.source_location(0, 0);
             let start_offset = state.offset;
             if is_binary_number {
                 state.advance(); // consume '0'
                 state.advance(); // consume 'b'
                 if !is_binary_digit(state.current()) {
-                    return Err(LexerError::ExpectedBinaryDigit(state.source_location(1, 0)));
+                    return Err(LexerError::ExpectedBinaryDigit(
+                        state.current_source_location(state.current().len_utf8()),
+                    ));
                 }
             } else if is_octal_number {
                 state.advance(); // consume '0'
                 state.advance(); // consume 'o'
                 if !is_octal_digit(state.current()) {
-                    return Err(LexerError::ExpectedOctalDigit(state.source_location(1, 0)));
+                    return Err(LexerError::ExpectedOctalDigit(
+                        state.current_source_location(state.current().len_utf8()),
+                    ));
                 }
             } else if is_hex_number {
                 state.advance(); // consume '0'
                 state.advance(); // consume 'x'
                 if !is_hex_digit(state.current()) {
                     return Err(LexerError::ExpectedDecimalDigit(
-                        state.source_location(1, 1),
+                        state.current_source_location(state.current().len_utf8()),
                     ));
                 }
             } else {
@@ -266,45 +310,38 @@ pub(crate) fn tokenize(filename: Rc<Path>, source: Rc<str>) -> Result<Vec<Token>
                     || is_hex_digit(state.current())
                     || state.current().is_ascii_digit())
             {
-                return Err(LexerError::ExpectedBinaryDigit(state.source_location(1, 1)));
+                return Err(LexerError::ExpectedBinaryDigit(
+                    state.current_source_location(state.current().len_utf8()),
+                ));
             }
 
             if is_octal_number
                 && (is_hex_digit(state.current()) || state.current().is_ascii_digit())
             {
-                return Err(LexerError::ExpectedOctalDigit(state.source_location(1, 1)));
+                return Err(LexerError::ExpectedOctalDigit(
+                    state.current_source_location(state.current().len_utf8()),
+                ));
             }
 
             if is_decimal_number && is_hex_digit(state.current()) {
                 return Err(LexerError::ExpectedDecimalDigit(
-                    state.source_location(1, 1),
+                    state.current_source_location(state.current().len_utf8()),
                 ));
             }
 
             let end_offset = state.offset;
             let num_bytes = end_offset - start_offset;
             tokens.push(Token {
-                source_location: SourceLocation {
-                    filename: start_source_location.filename,
-                    source: start_source_location.source,
-                    line: start_source_location.line,
-                    column: start_source_location.column,
-                    num_chars: num_bytes, // because each ASCII digit is 1 byte in size
-                    byte_offset: start_source_location.byte_offset,
-                    num_bytes,
-                },
+                source_location: state.source_location_at(start_offset, num_bytes),
                 type_: TokenType::Integer,
             });
             continue;
         }
 
         if state.current().is_xid_start() {
-            let start_source_location = state.source_location(0, 0);
             let start_offset = state.offset;
-            let mut num_chars = state.current().width().unwrap(); // unwrap is safe since width() doesn't return None for xid_start chars
             state.advance();
             while state.current().is_xid_continue() {
-                num_chars += state.current().width().unwrap(); // unwrap is safe since width() doesn't return None for xid_continue chars
                 state.advance();
             }
             let end_offset = state.offset;
@@ -338,15 +375,7 @@ pub(crate) fn tokenize(filename: Rc<Path>, source: Rc<str>) -> Result<Vec<Token>
             };
 
             tokens.push(Token {
-                source_location: SourceLocation {
-                    filename: start_source_location.filename,
-                    source: start_source_location.source,
-                    line: start_source_location.line,
-                    column: start_source_location.column,
-                    num_chars,
-                    byte_offset: start_source_location.byte_offset,
-                    num_bytes,
-                },
+                source_location: state.source_location_at(start_offset, num_bytes),
                 type_,
             });
             continue;
@@ -354,18 +383,16 @@ pub(crate) fn tokenize(filename: Rc<Path>, source: Rc<str>) -> Result<Vec<Token>
 
         if state.current() == '\'' {
             let is_valid_escape_character = |c: char| ['t', 'n', 'r', 'v', '\\', '\''].contains(&c);
-            let start_source_location = state.source_location(0, 0);
             let start_offset = state.offset;
             state.advance(); // consume opening '
             if state.current() == '\'' {
-                return Err(LexerError::ExpectedChar(state.source_location(1, 1)));
+                return Err(LexerError::ExpectedChar(state.current_source_location(1)));
             }
             let is_escape_sequence = state.current() == '\\';
             if is_escape_sequence {
                 if !is_valid_escape_character(state.peek()) {
-                    let length = state.peek().width().unwrap_or(0);
                     return Err(LexerError::InvalidEscapeSequence(
-                        state.source_location(1 + length, 1 + state.peek().len_utf8()),
+                        state.source_location_at(state.offset + 1, 1 + state.peek().len_utf8()),
                         state.peek(),
                     ));
                 }
@@ -373,9 +400,8 @@ pub(crate) fn tokenize(filename: Rc<Path>, source: Rc<str>) -> Result<Vec<Token>
             }
             state.advance(); // consume escape sequence character or actual character
             if state.current() != '\'' {
-                let length = state.peek().width().unwrap_or(0);
                 return Err(LexerError::UnexpectedCharacter {
-                    source_location: state.source_location(length, state.peek().len_utf8()),
+                    source_location: state.current_source_location(state.peek().len_utf8()),
                     expected: '\'',
                     actual: state.current(),
                 });
@@ -384,16 +410,7 @@ pub(crate) fn tokenize(filename: Rc<Path>, source: Rc<str>) -> Result<Vec<Token>
             let end_offset = state.offset;
             let num_bytes = end_offset - start_offset;
             tokens.push(Token {
-                source_location: SourceLocation {
-                    filename: start_source_location.filename,
-                    source: start_source_location.source,
-                    line: start_source_location.line,
-                    column: start_source_location.column,
-                    // num_chars = starting and ending single quotes + char (can be escape sequence)
-                    num_chars: if is_escape_sequence { 4 } else { 3 },
-                    byte_offset: start_source_location.byte_offset,
-                    num_bytes,
-                },
+                source_location: state.source_location_at(start_offset, num_bytes),
                 type_: TokenType::Char,
             });
             continue;
@@ -411,7 +428,7 @@ pub(crate) fn tokenize(filename: Rc<Path>, source: Rc<str>) -> Result<Vec<Token>
             } else if state.peek() == '*' {
                 // multi line comment
                 let mut depth: usize = 1;
-                let source_location = state.source_location(2, 2);
+                let source_location = state.current_source_location(2);
                 state.advance();
                 state.advance();
                 while !state.is_end_of_input() {
@@ -435,7 +452,7 @@ pub(crate) fn tokenize(filename: Rc<Path>, source: Rc<str>) -> Result<Vec<Token>
                 }
             } else {
                 tokens.push(Token {
-                    source_location: state.source_location(1, 1),
+                    source_location: state.current_source_location(1),
                     type_: TokenType::Slash,
                 });
                 state.advance();
@@ -449,13 +466,13 @@ pub(crate) fn tokenize(filename: Rc<Path>, source: Rc<str>) -> Result<Vec<Token>
         }
 
         return Err(LexerError::InvalidInput(
-            state.source_location(1, state.current().len_utf8()),
+            state.current_source_location(state.current().len_utf8()),
             state.current(),
         ));
     }
 
     tokens.push(Token {
-        source_location: state.source_location(0, 0),
+        source_location: state.current_source_location(0),
         type_: TokenType::EndOfInput,
     });
     Ok(tokens)

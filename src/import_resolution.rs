@@ -1,17 +1,27 @@
-use crate::parser::ir_parsed::{Import, Module, QualifiedName};
-use crate::parser::parse_module;
 use std::collections::{HashSet, VecDeque};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+
 use thiserror::Error;
+
+use crate::lexer::LexerError;
+use crate::parser::errors::ErrorReport;
+use crate::parser::ir_parsed::{Import, Module, QualifiedName};
+use crate::parser::parse_module;
 
 const SOURCE_FILE_EXTENSION: &str = "ceat";
 
 #[derive(Debug, Error)]
-pub(crate) enum ImportError {
+pub enum ImportError {
     #[error("unable to find module with filename '{path_to_search:1?}'")]
     ModuleNotFound { path_to_search: PathBuf },
+}
+
+impl ErrorReport for ImportError {
+    fn print_report(&self) {
+        todo!()
+    }
 }
 
 fn find_path(
@@ -94,7 +104,7 @@ pub(crate) struct ModuleWithImports {
 pub(crate) fn resolve_all_imports(
     main_module: ModuleWithImports,
     import_directories: &[&std::path::Path],
-) -> Result<Vec<ModuleWithImports>, ImportError> {
+) -> Result<Vec<ModuleWithImports>, Box<dyn ErrorReport>> {
     println!("main module is {}", main_module.canonical_path.display());
 
     let mut processed_files = HashSet::new();
@@ -119,12 +129,14 @@ pub(crate) fn resolve_all_imports(
         let canonical_filename: Rc<Path> = next_filename.into();
 
         let source: Rc<str> = std::fs::read_to_string(&*canonical_filename)
-            .unwrap()
+            .map_err(LexerError::FailedToReadFile)?
             .into();
 
-        let module = parse_module(Rc::clone(&canonical_filename), Rc::clone(&source)).unwrap(); // todo: handle parser error
+        let module = parse_module(Rc::clone(&canonical_filename), Rc::clone(&source))?;
 
-        let module_directory = canonical_filename.parent().expect("unable to get parent");
+        let module_directory = canonical_filename
+            .parent()
+            .expect("variable contains complete filename and thus has a parent");
         let imports = resolve_imports(module_directory, import_directories, &module)?;
 
         for (_, path) in &imports {

@@ -1,12 +1,13 @@
+use std::ops::Deref;
+use std::path::Path;
+use std::rc::Rc;
+
 use crate::lexer::tokenize;
-use crate::parser::errors::ParserError;
+use crate::parser::errors::{ErrorReport, ParserError};
 use crate::parser::ir_parsed::{
     Definition, Identifier, Import, Module, QualifiedName, StructDefinition, StructMember,
 };
 use crate::token::{Token, TokenType};
-use std::ops::Deref;
-use std::path::Path;
-use std::rc::Rc;
 
 pub(crate) mod errors;
 pub(crate) mod ir_parsed;
@@ -91,7 +92,7 @@ impl ParserState {
                 // leftover tokens
                 Err(ParserError::TokenTypeMismatch {
                     expected: vec![TokenType::EndOfInput],
-                    actual: Some(self.current().unwrap().type_),
+                    actual: Some(self.current().expect("EndOfInput not yet reached").type_),
                 })
             }
             _ => Ok(Module {
@@ -130,7 +131,9 @@ impl ParserState {
                 ..
             })
         ));
-        let token = self.current().expect("checked before");
+        let token = self
+            .current()
+            .expect("checked existence of token by caller");
         self.advance(1); // consume 'import' or 'from'
 
         let import = match token.type_ {
@@ -216,14 +219,13 @@ impl ParserState {
             self.advance(3);
             let comma_present = self.consume(TokenType::Comma).is_some();
             if !comma_present
-                || (comma_present
-                    && matches!(
-                        self.current(),
-                        Some(Token {
-                            type_: TokenType::RightCurlyBracket,
-                            ..
-                        })
-                    ))
+                || matches!(
+                    self.current(),
+                    Some(Token {
+                        type_: TokenType::RightCurlyBracket,
+                        ..
+                    })
+                )
             {
                 break;
             }
@@ -316,7 +318,11 @@ fn parse(tokens: Rc<[Token]>) -> Result<Module, ParserError> {
     ParserState::new(tokens).module()
 }
 
-pub(crate) fn parse_module(filename: Rc<Path>, source: Rc<str>) -> Result<Module, ParserError> {
-    let tokens: Rc<[Token]> = tokenize(filename, source).unwrap().into(); // todo: handle lexer error
-    parse(tokens)
+pub(crate) fn parse_module(
+    filename: Rc<Path>,
+    source: Rc<str>,
+) -> Result<Module, Box<dyn ErrorReport>> {
+    let tokens: Rc<[Token]> = tokenize(filename, source)?.into();
+    let module = parse(tokens)?;
+    Ok(module)
 }

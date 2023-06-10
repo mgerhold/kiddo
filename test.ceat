@@ -1,4 +1,3 @@
-import std::terminal;
 import std::terminal as term;
 import ::std::terminal;
 import ::std::terminal as t;
