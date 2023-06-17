@@ -306,7 +306,7 @@ impl<'a> ParserState<'a> {
         if num_tokens == 0 {
             Err(ParserError::TokenTypeMismatch {
                 expected: vec![sequence[0]],
-                actual: self.current().and_then(|token| Some(token.type_)),
+                actual: self.current().map(|token| token.type_),
             })
         } else {
             Ok(&self.tokens[start_index..][..num_tokens])
@@ -323,16 +323,8 @@ pub(crate) fn parse_module<'a>(
     source: &'a str,
     bump_allocator: &'a Bump,
 ) -> Result<Module<'a>, Box<dyn ErrorReport + 'a>> {
-    match tokenize(filename, source) {
-        Ok(tokens) => {
-            let tokens = bump_allocator.alloc_slice_clone(&tokens);
-            let module = parse(tokens)?;
-            Ok(module)
-        }
-        Err(error) => Err(error.into()),
-    }
-    /*let tokens = tokenize(filename, source)?;
+    let tokens = tokenize(filename, source)?;
     let tokens = bump_allocator.alloc_slice_clone(&tokens);
     let module = parse(tokens)?;
-    Ok(module)*/
+    Ok(module)
 }

@@ -57,8 +57,8 @@ impl<'a> TryFrom<&[Token<'a>]> for StructMember<'a> {
                 type_: TokenType::Colon,
                 ..
             }, type_ @ Token { .. }, ..] => Ok(Self {
-                name: Identifier::try_from(name.clone())?,
-                type_: Identifier::try_from(type_.clone())?,
+                name: Identifier::try_from(*name)?,
+                type_: Identifier::try_from(*type_)?,
             }),
             [Token { .. }, separator @ Token { .. }, Token { .. }, ..] => {
                 Err(ParserError::TokenTypeMismatch {
@@ -67,7 +67,7 @@ impl<'a> TryFrom<&[Token<'a>]> for StructMember<'a> {
                 })
             }
             [name @ Token { .. }] => {
-                Identifier::try_from(name.clone())?;
+                Identifier::try_from(*name)?;
                 Err(ParserError::TokenTypeMismatch {
                     expected: vec![TokenType::Colon],
                     actual: None,
@@ -77,14 +77,14 @@ impl<'a> TryFrom<&[Token<'a>]> for StructMember<'a> {
                 type_: TokenType::Colon,
                 ..
             }] => {
-                Identifier::try_from(name.clone())?;
+                Identifier::try_from(*name)?;
                 Err(ParserError::TokenTypeMismatch {
                     expected: vec![TokenType::Identifier],
                     actual: None,
                 })
             }
             [name @ Token { .. }, separator @ Token { .. }] => {
-                Identifier::try_from(name.clone())?;
+                Identifier::try_from(*name)?;
                 Err(ParserError::TokenTypeMismatch {
                     expected: vec![TokenType::Colon],
                     actual: Some(separator.type_),
