@@ -323,16 +323,8 @@ pub(crate) fn parse_module<'a>(
     source: &'a str,
     bump_allocator: &'a Bump,
 ) -> Result<Module<'a>, Box<dyn ErrorReport + 'a>> {
-    match tokenize(filename, source) {
-        Ok(tokens) => {
-            let tokens = bump_allocator.alloc_slice_clone(&tokens);
-            let module = parse(tokens)?;
-            Ok(module)
-        }
-        Err(error) => Err(error.into()),
-    }
-    /*let tokens = tokenize(filename, source)?;
+    let tokens = tokenize(filename, source)?;
     let tokens = bump_allocator.alloc_slice_clone(&tokens);
     let module = parse(tokens)?;
-    Ok(module)*/
+    Ok(module)
 }
