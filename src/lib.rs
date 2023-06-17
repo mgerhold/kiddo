@@ -32,7 +32,7 @@ pub fn main<'a>(bump_allocator: &'a Bump) -> Result<(), Box<dyn ErrorReport + 'a
 
     let import_directories = vec![main_module_directory.deref()]; // this is a vector since this will be filled dynamically later
     let main_module_source =
-        bump_allocator.alloc_str(&std::fs::read_to_string(&main_module_filename).unwrap());
+        bump_allocator.alloc_str(&std::fs::read_to_string(main_module_filename).unwrap());
 
     let main_module = parse_module(
         main_module_canonical_path,

@@ -306,7 +306,7 @@ impl<'a> ParserState<'a> {
         if num_tokens == 0 {
             Err(ParserError::TokenTypeMismatch {
                 expected: vec![sequence[0]],
-                actual: self.current().and_then(|token| Some(token.type_)),
+                actual: self.current().map(|token| token.type_),
             })
         } else {
             Ok(&self.tokens[start_index..][..num_tokens])

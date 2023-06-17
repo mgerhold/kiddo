@@ -87,7 +87,7 @@ pub(crate) fn resolve_imports<'a>(
                 path_to_search: path_to_search.clone(),
             }
         })?;
-        imports.push((import.clone(), path));
+        imports.push((*import, path));
     }
     Ok(imports)
 }
@@ -128,7 +128,7 @@ pub(crate) fn resolve_all_imports<'a>(
         let canonical_filename = bump_allocator.alloc_path(next_filename);
 
         let source = bump_allocator.alloc_str(
-            &std::fs::read_to_string(&*canonical_filename).map_err(LexerError::FailedToReadFile)?,
+            &std::fs::read_to_string(canonical_filename).map_err(LexerError::FailedToReadFile)?,
         );
 
         let module = parse_module(canonical_filename, source, bump_allocator)?;
