@@ -21,9 +21,9 @@ pub trait ErrorReport: Error {
     fn print_report(&self);
 }
 
-impl<E> From<E> for Box<dyn ErrorReport>
+impl<'a, E> From<E> for Box<dyn ErrorReport + 'a>
 where
-    E: ErrorReport + 'static,
+    E: ErrorReport + 'a,
 {
     fn from(value: E) -> Self {
         Box::new(value)

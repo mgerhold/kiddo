@@ -1,7 +1,6 @@
 use std::fmt::Display;
 use std::ops::Range;
 use std::path::Path;
-use std::rc::Rc;
 
 use unicode_width::UnicodeWidthStr;
 
@@ -11,18 +10,18 @@ struct LineColumnContents<'a> {
     contents: &'a str,
 }
 
-#[derive(Debug, Clone)]
-pub struct SourceLocation {
-    filename: Rc<Path>,
-    source: Rc<str>,
+#[derive(Debug, Clone, Copy)]
+pub struct SourceLocation<'a> {
+    filename: &'a Path,
+    source: &'a str,
     byte_offset: usize,
     num_bytes: usize,
 }
 
-impl SourceLocation {
+impl<'a> SourceLocation<'a> {
     pub(crate) fn new(
-        filename: Rc<Path>,
-        source: Rc<str>,
+        filename: &'a Path,
+        source: &'a str,
         byte_offset: usize,
         num_bytes: usize,
     ) -> Self {
@@ -51,20 +50,20 @@ impl SourceLocation {
         self.lexeme().chars().count()
     }
 
-    pub(crate) fn line_contents(&self) -> &str {
+    pub(crate) fn line_contents(&self) -> &'a str {
         self.line_column_contents().contents
     }
 
-    pub(crate) fn lexeme(&self) -> &str {
+    pub(crate) fn lexeme(&self) -> &'a str {
         &self.source[self.byte_offset..][..self.num_bytes]
     }
 
-    pub(crate) fn filename(&self) -> Rc<Path> {
-        Rc::clone(&self.filename)
+    pub(crate) fn filename(&self) -> &'a Path {
+        self.filename
     }
 
-    pub(crate) fn source(&self) -> Rc<str> {
-        Rc::clone(&self.source)
+    pub(crate) fn source(&self) -> &'a str {
+        self.source
     }
 
     pub(crate) fn byte_offset(&self) -> usize {
@@ -84,7 +83,7 @@ impl SourceLocation {
         start..start + self.num_chars()
     }
 
-    fn line_column_contents(&self) -> LineColumnContents {
+    fn line_column_contents(&self) -> LineColumnContents<'a> {
         let mut total_size = 0;
         for (i, contents) in self.source.lines().enumerate() {
             let start_offset = total_size;
@@ -106,7 +105,7 @@ impl SourceLocation {
     }
 }
 
-impl Display for SourceLocation {
+impl Display for SourceLocation<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
@@ -175,19 +174,19 @@ pub enum TokenType {
     EndOfInput,
 }
 
-#[derive(Debug, Clone)]
-pub(crate) struct Token {
-    pub source_location: SourceLocation,
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Token<'a> {
+    pub source_location: SourceLocation<'a>,
     pub type_: TokenType,
 }
 
-impl Token {
-    pub(crate) fn lexeme(&self) -> &str {
+impl<'a> Token<'a> {
+    pub(crate) fn lexeme(&self) -> &'a str {
         self.source_location.lexeme()
     }
 }
 
-impl Display for Token {
+impl Display for Token<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
