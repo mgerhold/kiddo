@@ -1,5 +1,4 @@
 use std::path::Path;
-use std::rc::Rc;
 use std::{error::Error, fmt};
 
 use unicode_xid::UnicodeXID;
@@ -8,31 +7,31 @@ use crate::parser::errors::{print_error, ErrorReport};
 use crate::token::{SourceLocation, Token, TokenType};
 
 #[derive(Debug)]
-pub enum LexerError {
-    InvalidInput(SourceLocation, char),
-    UnterminatedMultilineComment(SourceLocation),
-    ExpectedBinaryDigit(SourceLocation),
-    ExpectedOctalDigit(SourceLocation),
-    ExpectedDecimalDigit(SourceLocation),
-    ExpectedChar(SourceLocation),
-    InvalidEscapeSequence(SourceLocation, char),
+pub enum LexerError<'a> {
+    InvalidInput(SourceLocation<'a>, char),
+    UnterminatedMultilineComment(SourceLocation<'a>),
+    ExpectedBinaryDigit(SourceLocation<'a>),
+    ExpectedOctalDigit(SourceLocation<'a>),
+    ExpectedDecimalDigit(SourceLocation<'a>),
+    ExpectedChar(SourceLocation<'a>),
+    InvalidEscapeSequence(SourceLocation<'a>, char),
     UnexpectedCharacter {
-        source_location: SourceLocation,
+        source_location: SourceLocation<'a>,
         expected: char,
         actual: char,
     },
     FailedToReadFile(std::io::Error),
 }
 
-impl Error for LexerError {}
+impl Error for LexerError<'_> {}
 
-impl fmt::Display for LexerError {
+impl fmt::Display for LexerError<'_> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:?}", self)
     }
 }
 
-impl ErrorReport for LexerError {
+impl ErrorReport for LexerError<'_> {
     fn print_report(&self) {
         match self {
             LexerError::InvalidInput(location, char) => {
@@ -74,14 +73,14 @@ impl ErrorReport for LexerError {
     }
 }
 
-struct LexerState {
-    filename: Rc<Path>,
-    source: Rc<str>,
+struct LexerState<'a> {
+    filename: &'a Path,
+    source: &'a str,
     offset: usize,
 }
 
-impl LexerState {
-    fn new(filename: Rc<Path>, source: Rc<str>) -> Result<Self, LexerError> {
+impl<'a> LexerState<'a> {
+    fn new(filename: &'a Path, source: &'a str) -> Result<Self, LexerError<'a>> {
         Ok(Self {
             filename,
             source,
@@ -121,30 +120,23 @@ impl LexerState {
         result
     }
 
-    fn lexeme(&self, start_offset: usize, num_bytes: usize) -> &str {
+    fn lexeme(&self, start_offset: usize, num_bytes: usize) -> &'a str {
         &self.source[start_offset..][..num_bytes]
     }
 
-    fn source_location_at(&self, byte_offset: usize, num_bytes: usize) -> SourceLocation {
-        SourceLocation::new(
-            Rc::clone(&self.filename),
-            Rc::clone(&self.source),
-            byte_offset,
-            num_bytes,
-        )
+    fn source_location_at(&self, byte_offset: usize, num_bytes: usize) -> SourceLocation<'a> {
+        SourceLocation::new(self.filename, self.source, byte_offset, num_bytes)
     }
 
-    fn current_source_location(&self, num_bytes: usize) -> SourceLocation {
-        SourceLocation::new(
-            Rc::clone(&self.filename),
-            Rc::clone(&self.source),
-            self.offset,
-            num_bytes,
-        )
+    fn current_source_location(&self, num_bytes: usize) -> SourceLocation<'a> {
+        SourceLocation::new(self.filename, self.source, self.offset, num_bytes)
     }
 }
 
-pub(crate) fn tokenize(filename: Rc<Path>, source: Rc<str>) -> Result<Vec<Token>, LexerError> {
+pub(crate) fn tokenize<'a>(
+    filename: &'a Path,
+    source: &'a str,
+) -> Result<Vec<Token<'a>>, LexerError<'a>> {
     let mut state = LexerState::new(filename, source)?;
     let mut tokens = Vec::new();
     while !state.is_end_of_input() {

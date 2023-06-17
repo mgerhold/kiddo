@@ -1,14 +1,15 @@
 use std::collections::{HashSet, VecDeque};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
-use std::rc::Rc;
 
+use bumpalo::Bump;
 use thiserror::Error;
 
 use crate::lexer::LexerError;
 use crate::parser::errors::ErrorReport;
 use crate::parser::ir_parsed::{Import, Module, QualifiedName};
 use crate::parser::parse_module;
+use crate::utils::AllocPath;
 
 const SOURCE_FILE_EXTENSION: &str = "ceat";
 
@@ -24,23 +25,20 @@ impl ErrorReport for ImportError {
     }
 }
 
-fn find_path(
-    relative_path: &std::path::Path,
-    possible_roots: &[&std::path::Path],
-) -> Option<PathBuf> {
+fn find_path(relative_path: &Path, possible_roots: &[&Path]) -> Option<PathBuf> {
     possible_roots
         .iter()
         .map(|root| root.join(relative_path))
         .find(|path| path.exists())
 }
 
-type ModuleImports = Vec<(Import, PathBuf)>;
+type ModuleImports<'a> = Vec<(Import<'a>, PathBuf)>;
 
-pub(crate) fn resolve_imports(
-    module_directory: &std::path::Path,
-    import_directories: &[&std::path::Path],
-    module: &Module,
-) -> Result<ModuleImports, ImportError> {
+pub(crate) fn resolve_imports<'a>(
+    module_directory: &'a Path,
+    import_directories: &[&Path],
+    module: &Module<'a>,
+) -> Result<ModuleImports<'a>, ImportError> {
     let directories_for_absolute_imports = import_directories;
     let directories_for_relative_imports = &[module_directory][..];
 
@@ -95,16 +93,17 @@ pub(crate) fn resolve_imports(
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ModuleWithImports {
-    pub(crate) canonical_path: Rc<Path>,
-    pub(crate) module: Module,
-    pub(crate) imports: ModuleImports,
+pub(crate) struct ModuleWithImports<'a> {
+    pub(crate) canonical_path: &'a Path,
+    pub(crate) module: Module<'a>,
+    pub(crate) imports: ModuleImports<'a>,
 }
 
-pub(crate) fn resolve_all_imports(
-    main_module: ModuleWithImports,
-    import_directories: &[&std::path::Path],
-) -> Result<Vec<ModuleWithImports>, Box<dyn ErrorReport>> {
+pub(crate) fn resolve_all_imports<'a>(
+    main_module: ModuleWithImports<'a>,
+    import_directories: &[&Path],
+    bump_allocator: &'a Bump,
+) -> Result<Vec<ModuleWithImports<'a>>, Box<dyn ErrorReport + 'a>> {
     println!("main module is {}", main_module.canonical_path.display());
 
     let mut processed_files = HashSet::new();
@@ -126,13 +125,13 @@ pub(crate) fn resolve_all_imports(
 
         println!("processing next module: {}...", next_filename.display());
 
-        let canonical_filename: Rc<Path> = next_filename.into();
+        let canonical_filename = bump_allocator.alloc_path(next_filename);
 
-        let source: Rc<str> = std::fs::read_to_string(&*canonical_filename)
-            .map_err(LexerError::FailedToReadFile)?
-            .into();
+        let source = bump_allocator.alloc_str(
+            &std::fs::read_to_string(&*canonical_filename).map_err(LexerError::FailedToReadFile)?,
+        );
 
-        let module = parse_module(Rc::clone(&canonical_filename), Rc::clone(&source))?;
+        let module = parse_module(canonical_filename, source, bump_allocator)?;
 
         let module_directory = canonical_filename
             .parent()
