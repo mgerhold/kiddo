@@ -362,6 +362,7 @@ pub(crate) fn tokenize<'a>(
                 "as" => TokenType::As,
                 "struct" => TokenType::Struct,
                 "function" => TokenType::Function,
+                "Function" => TokenType::CapitalizedFunction,
                 "if" => TokenType::If,
                 "else" => TokenType::Else,
                 "loop" => TokenType::Loop,

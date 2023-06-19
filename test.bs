@@ -9,6 +9,7 @@ import ::std::containers::list;
 struct S {
     number: U32,
     another: U32,
+    function_pointer: Function(U32, ::std::String, [->mutable Function(U8, U8) ~> U8; 0xA]) ~> Nothing,
 }
 
 struct S { }

@@ -262,6 +262,29 @@ impl<'a> ParserState<'a> {
         }
     }
 
+    fn type_list(&mut self) -> Result<Vec<DataType<'a>>, ParserError<'a>> {
+        let is_valid_type_start = |token: Token| {
+            [
+                TokenType::ColonColon,
+                TokenType::Identifier,
+                TokenType::LeftSquareBracket,
+                TokenType::Arrow,
+                TokenType::CapitalizedFunction,
+            ]
+            .contains(&token.type_)
+        };
+
+        let mut types = Vec::new();
+        while is_valid_type_start(self.current().expect("should be at least EndOfInput")) {
+            types.push(self.data_type()?);
+            if self.consume(TokenType::Comma).is_none() {
+                break;
+            }
+        }
+
+        Ok(types)
+    }
+
     fn data_type(&mut self) -> Result<DataType<'a>, ParserError<'a>> {
         /*
         DataType:
@@ -270,8 +293,6 @@ impl<'a> ParserState<'a> {
             | ('->' mutability=Mutability pointee_type=DataType)
             | ('Function' '(' parameter_types=TypeList ')' '~>' return_type=DataType)
          */
-
-        // todo: implement parsing function pointers
         match self.current().expect("should be at least EndOfInput") {
             Token {
                 type_: TokenType::LeftSquareBracket,
@@ -302,6 +323,22 @@ impl<'a> ParserState<'a> {
                 Ok(DataType::Pointer {
                     mutability,
                     pointee_type,
+                })
+            }
+            Token {
+                type_: TokenType::CapitalizedFunction,
+                ..
+            } => {
+                // function pointer type
+                self.advance(1); // consume 'Function'
+                self.expect(TokenType::LeftParenthesis)?;
+                let parameter_types = self.type_list()?;
+                self.expect(TokenType::RightParenthesis)?;
+                self.expect(TokenType::TildeArrow)?;
+                let return_type = self.bump_allocator.alloc(self.data_type()?);
+                Ok(DataType::FunctionPointer {
+                    parameter_types,
+                    return_type,
                 })
             }
             _ => {

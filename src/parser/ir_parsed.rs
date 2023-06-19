@@ -49,7 +49,7 @@ pub(crate) enum Mutability {
     Mutable,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) enum DataType<'a> {
     Named {
         name: QualifiedName<'a>,
@@ -62,9 +62,13 @@ pub(crate) enum DataType<'a> {
         contained_type: &'a DataType<'a>,
         size: BackseatSize,
     },
+    FunctionPointer {
+        parameter_types: Vec<DataType<'a>>,
+        return_type: &'a DataType<'a>,
+    },
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct StructMember<'a> {
     pub(crate) name: Identifier<'a>,
     pub(crate) type_: DataType<'a>,

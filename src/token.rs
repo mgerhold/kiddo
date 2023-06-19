@@ -164,6 +164,7 @@ pub enum TokenType {
     As,
     Struct,
     Function,
+    CapitalizedFunction,
     If,
     Else,
     Loop,
