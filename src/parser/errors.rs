@@ -3,7 +3,7 @@ use std::error::Error;
 use ariadne::{Label, Report, ReportKind, Source};
 use thiserror::Error;
 
-use crate::token::{SourceLocation, TokenType};
+use crate::token::{SourceLocation, Token, TokenType};
 
 pub(crate) fn print_error(location: &SourceLocation, message: String, label_message: String) {
     let filename = location.filename();
@@ -30,8 +30,9 @@ where
     }
 }
 
+// todo: remove thiserror crate
 #[derive(Error, Debug)]
-pub enum ParserError {
+pub enum ParserError<'a> {
     #[error("token type mismatch (expected '{expected:?}', actual '{actual:?}'")]
     TokenTypeMismatch {
         expected: Vec<TokenType>,
@@ -39,9 +40,11 @@ pub enum ParserError {
     },
     #[error("unexpected end of input (expected '{expected:?}')")]
     UnexpectedEndOfInput { expected: &'static [TokenType] },
+    #[error("integer literal '{}' out of bounds", token.lexeme())]
+    IntegerLiteralOutOfBounds { token: Token<'a> },
 }
 
-impl ErrorReport for ParserError {
+impl ErrorReport for ParserError<'_> {
     fn print_report(&self) {
         todo!()
     }

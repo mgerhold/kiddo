@@ -171,7 +171,7 @@ pub(crate) fn tokenize<'a>(
             if state.peek() == '>' {
                 tokens.push(Token {
                     source_location: state.current_source_location(2),
-                    type_: TokenType::MinusGreaterThan,
+                    type_: TokenType::Arrow,
                 });
                 state.advance();
             } else {
@@ -221,7 +221,7 @@ pub(crate) fn tokenize<'a>(
         if state.current() == '~' && state.peek() == '>' {
             tokens.push(Token {
                 source_location: state.current_source_location(2),
-                type_: TokenType::TildeGreaterThan,
+                type_: TokenType::TildeArrow,
             });
             state.advance();
             state.advance();

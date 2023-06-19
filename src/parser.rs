@@ -5,14 +5,16 @@ use bumpalo::Bump;
 use crate::lexer::tokenize;
 use crate::parser::errors::{ErrorReport, ParserError};
 use crate::parser::ir_parsed::{
-    Definition, Identifier, Import, Module, QualifiedName, StructDefinition, StructMember,
+    DataType, Definition, Identifier, Import, Module, Mutability, QualifiedName, StructDefinition,
+    StructMember,
 };
 use crate::token::{Token, TokenType};
+use crate::utils::parse_unsigned_int;
 
 pub(crate) mod errors;
 pub(crate) mod ir_parsed;
 
-fn ends_with_identifier(tokens: &[Token]) -> Result<(), ParserError> {
+fn ends_with_identifier<'a>(tokens: &'a [Token<'a>]) -> Result<(), ParserError<'a>> {
     match tokens {
         [] => Err(ParserError::TokenTypeMismatch {
             expected: vec![TokenType::Identifier],
@@ -32,13 +34,15 @@ fn ends_with_identifier(tokens: &[Token]) -> Result<(), ParserError> {
 struct ParserState<'a> {
     tokens: &'a [Token<'a>],
     current_index: usize,
+    bump_allocator: &'a Bump,
 }
 
 impl<'a> ParserState<'a> {
-    fn new(tokens: &'a [Token<'a>]) -> Self {
+    fn new(tokens: &'a [Token<'a>], bump_allocator: &'a Bump) -> Self {
         Self {
             tokens,
             current_index: 0,
+            bump_allocator,
         }
     }
 
@@ -50,7 +54,7 @@ impl<'a> ParserState<'a> {
         self.tokens.get(self.current_index + 1).cloned()
     }
 
-    fn expect(&mut self, type_: TokenType) -> Result<Token<'a>, ParserError> {
+    fn expect(&mut self, type_: TokenType) -> Result<Token<'a>, ParserError<'a>> {
         let current_token_type = self.current().map(|token| token.type_);
         self.consume(type_)
             .ok_or_else(move || ParserError::TokenTypeMismatch {
@@ -77,7 +81,7 @@ impl<'a> ParserState<'a> {
         self.current_index += amount
     }
 
-    fn module(&mut self) -> Result<Module<'a>, ParserError> {
+    fn module(&mut self) -> Result<Module<'a>, ParserError<'a>> {
         /*
         Module:
             (imports=Imports)
@@ -102,7 +106,7 @@ impl<'a> ParserState<'a> {
         }
     }
 
-    fn imports(&mut self) -> Result<Vec<Import<'a>>, ParserError> {
+    fn imports(&mut self) -> Result<Vec<Import<'a>>, ParserError<'a>> {
         /*
         Imports:
             (imports+=Import)*
@@ -118,7 +122,7 @@ impl<'a> ParserState<'a> {
         Ok(imports)
     }
 
-    fn import(&mut self) -> Result<Import<'a>, ParserError> {
+    fn import(&mut self) -> Result<Import<'a>, ParserError<'a>> {
         /*
         Import:
             'import' what=QualifiedName ('as' as=Identifier)? ';'
@@ -166,7 +170,7 @@ impl<'a> ParserState<'a> {
         Ok(import)
     }
 
-    fn definitions(&mut self) -> Result<Vec<Definition<'a>>, ParserError> {
+    fn definitions(&mut self) -> Result<Vec<Definition<'a>>, ParserError<'a>> {
         let mut result = Vec::new();
         while let Some(
             token @ Token {
@@ -185,7 +189,7 @@ impl<'a> ParserState<'a> {
         Ok(result)
     }
 
-    fn struct_definition(&mut self) -> Result<StructDefinition<'a>, ParserError> {
+    fn struct_definition(&mut self) -> Result<StructDefinition<'a>, ParserError<'a>> {
         /*
         StructDefinition:
             'struct' (name=Identifier) '{'
@@ -200,7 +204,7 @@ impl<'a> ParserState<'a> {
             )?
 
         StructMember:
-            (name=Identifier) ':' (type=Identifier)
+            (name=Identifier) ':' (type=DataType)
         */
         assert!(matches!(
             self.current(),
@@ -214,9 +218,16 @@ impl<'a> ParserState<'a> {
         let name = self.identifier()?;
         self.expect(TokenType::LeftCurlyBracket)?;
         let mut members = Vec::new();
-        while let Ok(member) = StructMember::try_from(&self.tokens[self.current_index..]) {
-            members.push(member);
-            self.advance(3);
+
+        while let Some(identifier_token) = self.consume(TokenType::Identifier) {
+            self.expect(TokenType::Colon)?;
+            let type_ = self.data_type()?;
+            members.push(StructMember {
+                name: Identifier {
+                    token: identifier_token,
+                },
+                type_,
+            });
             let comma_present = self.consume(TokenType::Comma).is_some();
             if !comma_present
                 || matches!(
@@ -230,20 +241,85 @@ impl<'a> ParserState<'a> {
                 break;
             }
         }
+
         self.expect(TokenType::RightCurlyBracket)?;
 
         Ok(StructDefinition { name, members })
     }
 
-    fn identifier(&mut self) -> Result<Identifier<'a>, ParserError> {
+    fn mutability(&mut self) -> Mutability {
+        /*
+        Mutability:
+            ('mutable' | 'const')?
+
+        note: if both 'mutable' and 'const' are not present, 'const' is assumed
+         */
+        if self.consume(TokenType::Mutable).is_some() {
+            Mutability::Mutable
+        } else {
+            self.consume(TokenType::Const);
+            Mutability::Constant
+        }
+    }
+
+    fn data_type(&mut self) -> Result<DataType<'a>, ParserError<'a>> {
+        /*
+        DataType:
+            (name=QualifiedName)
+            | ('[' contained_type=DataType ';' size=Integer ']')
+            | ('->' mutability=Mutability pointee_type=DataType)
+            | ('Function' '(' parameter_types=TypeList ')' '~>' return_type=DataType)
+         */
+
+        // todo: implement parsing function pointers
+        match self.current().expect("should be at least EndOfInput") {
+            Token {
+                type_: TokenType::LeftSquareBracket,
+                ..
+            } => {
+                // array type
+                self.advance(1); // consume '['
+                let contained_type = self.bump_allocator.alloc(self.data_type()?);
+                self.expect(TokenType::Semicolon)?;
+                let size_token = self.expect(TokenType::Integer)?;
+                let size = parse_unsigned_int(size_token)?;
+                self.expect(TokenType::RightSquareBracket)?;
+                Ok(DataType::Array {
+                    contained_type,
+                    size,
+                })
+            }
+            Token {
+                type_: TokenType::Arrow,
+                ..
+            } => {
+                // pointer type
+                self.advance(1); // consume '->'
+
+                let mutability = self.mutability();
+
+                let pointee_type = self.bump_allocator.alloc(self.data_type()?);
+                Ok(DataType::Pointer {
+                    mutability,
+                    pointee_type,
+                })
+            }
+            _ => {
+                // named type
+                let name = self.qualified_name()?;
+                Ok(DataType::Named { name })
+            }
+        }
+    }
+
+    fn identifier(&mut self) -> Result<Identifier<'a>, ParserError<'a>> {
         /*
         Identifier:
             token=IDENTIFIER
          */
-        let identifier =
-            Identifier::try_from(self.current().expect("must at least be EndOfInput"))?;
-        self.advance(1);
-        Ok(identifier)
+        Ok(Identifier {
+            token: self.expect(TokenType::Identifier)?,
+        })
     }
 
     fn consume_until_one_of(&mut self, types: &'static [TokenType]) -> &'a [Token<'a>] {
@@ -264,7 +340,7 @@ impl<'a> ParserState<'a> {
         consumable_tokens
     }
 
-    fn qualified_name(&mut self) -> Result<QualifiedName<'a>, ParserError> {
+    fn qualified_name(&mut self) -> Result<QualifiedName<'a>, ParserError<'a>> {
         /*
         QualifiedName:
             ('::')? tokens+=Identifier ('::' tokens+=Identifier)*
@@ -314,8 +390,11 @@ impl<'a> ParserState<'a> {
     }
 }
 
-fn parse<'a>(tokens: &'a [Token<'a>]) -> Result<Module<'a>, ParserError> {
-    ParserState::new(tokens).module()
+fn parse<'a>(
+    tokens: &'a [Token<'a>],
+    bump_allocator: &'a Bump,
+) -> Result<Module<'a>, ParserError<'a>> {
+    ParserState::new(tokens, bump_allocator).module()
 }
 
 pub(crate) fn parse_module<'a>(
@@ -325,6 +404,6 @@ pub(crate) fn parse_module<'a>(
 ) -> Result<Module<'a>, Box<dyn ErrorReport + 'a>> {
     let tokens = tokenize(filename, source)?;
     let tokens = bump_allocator.alloc_slice_clone(&tokens);
-    let module = parse(tokens)?;
+    let module = parse(tokens, bump_allocator)?;
     Ok(module)
 }

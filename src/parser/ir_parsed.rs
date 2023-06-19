@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 
+use crate::constants::BackseatSize;
 use crate::parser::ends_with_identifier;
 use crate::parser::errors::ParserError;
 use crate::token::{Token, TokenType};
@@ -43,59 +44,30 @@ pub(crate) struct StructDefinition<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct StructMember<'a> {
-    name: Identifier<'a>,
-    type_: Identifier<'a>,
+pub(crate) enum Mutability {
+    Constant,
+    Mutable,
 }
 
-impl<'a> TryFrom<&[Token<'a>]> for StructMember<'a> {
-    type Error = ParserError;
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum DataType<'a> {
+    Named {
+        name: QualifiedName<'a>,
+    },
+    Pointer {
+        mutability: Mutability,
+        pointee_type: &'a DataType<'a>,
+    },
+    Array {
+        contained_type: &'a DataType<'a>,
+        size: BackseatSize,
+    },
+}
 
-    fn try_from(tokens: &[Token<'a>]) -> Result<Self, Self::Error> {
-        match tokens {
-            [name @ Token { .. }, Token {
-                type_: TokenType::Colon,
-                ..
-            }, type_ @ Token { .. }, ..] => Ok(Self {
-                name: Identifier::try_from(*name)?,
-                type_: Identifier::try_from(*type_)?,
-            }),
-            [Token { .. }, separator @ Token { .. }, Token { .. }, ..] => {
-                Err(ParserError::TokenTypeMismatch {
-                    expected: vec![TokenType::Colon],
-                    actual: Some(separator.type_),
-                })
-            }
-            [name @ Token { .. }] => {
-                Identifier::try_from(*name)?;
-                Err(ParserError::TokenTypeMismatch {
-                    expected: vec![TokenType::Colon],
-                    actual: None,
-                })
-            }
-            [name @ Token { .. }, Token {
-                type_: TokenType::Colon,
-                ..
-            }] => {
-                Identifier::try_from(*name)?;
-                Err(ParserError::TokenTypeMismatch {
-                    expected: vec![TokenType::Identifier],
-                    actual: None,
-                })
-            }
-            [name @ Token { .. }, separator @ Token { .. }] => {
-                Identifier::try_from(*name)?;
-                Err(ParserError::TokenTypeMismatch {
-                    expected: vec![TokenType::Colon],
-                    actual: Some(separator.type_),
-                })
-            }
-            [] => Err(ParserError::TokenTypeMismatch {
-                expected: vec![TokenType::Identifier],
-                actual: None,
-            }),
-        }
-    }
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct StructMember<'a> {
+    pub(crate) name: Identifier<'a>,
+    pub(crate) type_: DataType<'a>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -123,8 +95,8 @@ impl From<&QualifiedName<'_>> for PathBuf {
     }
 }
 
-impl QualifiedName<'_> {
-    fn are_repeated(repeated: &[TokenType], in_: &[Token]) -> Result<(), ParserError> {
+impl<'a> QualifiedName<'a> {
+    fn are_repeated(repeated: &[TokenType], in_: &[Token]) -> Result<(), ParserError<'a>> {
         assert!(!repeated.is_empty());
 
         for (token, &expected) in in_.iter().zip(repeated.iter().cycle()) {
@@ -141,7 +113,7 @@ impl QualifiedName<'_> {
 }
 
 impl<'a> TryFrom<&'a [Token<'a>]> for QualifiedName<'a> {
-    type Error = ParserError;
+    type Error = ParserError<'a>;
 
     fn try_from(tokens: &'a [Token<'a>]) -> Result<Self, Self::Error> {
         match tokens {
@@ -183,20 +155,5 @@ impl<'a> TryFrom<&'a [Token<'a>]> for QualifiedName<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Identifier<'a> {
-    token: Token<'a>,
-}
-
-impl<'a> TryFrom<Token<'a>> for Identifier<'a> {
-    type Error = ParserError;
-
-    fn try_from(token: Token<'a>) -> Result<Self, Self::Error> {
-        if token.type_ == TokenType::Identifier {
-            Ok(Self { token })
-        } else {
-            Err(ParserError::TokenTypeMismatch {
-                expected: vec![TokenType::Identifier],
-                actual: Some(token.type_),
-            })
-        }
-    }
+    pub(crate) token: Token<'a>,
 }

@@ -134,8 +134,8 @@ pub enum TokenType {
     LessThan,
     GreaterThanEquals,
     LessThanEquals,
-    TildeGreaterThan,
-    MinusGreaterThan,
+    TildeArrow,
+    Arrow,
     At,
     ExclamationMark,
     Colon,
@@ -175,7 +175,7 @@ pub enum TokenType {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Token<'a> {
+pub struct Token<'a> {
     pub source_location: SourceLocation<'a>,
     pub type_: TokenType,
 }

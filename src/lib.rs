@@ -10,6 +10,7 @@ use crate::parser::errors::ErrorReport;
 use crate::parser::parse_module;
 use crate::utils::AllocPath;
 
+mod constants;
 mod import_resolution;
 mod lexer;
 mod parser;
