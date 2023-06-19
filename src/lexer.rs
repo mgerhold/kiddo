@@ -151,7 +151,6 @@ pub(crate) fn tokenize<'a>(
             '*' => Some(TokenType::Asterisk),
             '=' => Some(TokenType::Equals),
             '@' => Some(TokenType::At),
-            '!' => Some(TokenType::ExclamationMark),
             ';' => Some(TokenType::Semicolon),
             ',' => Some(TokenType::Comma),
             '.' => Some(TokenType::Dot),
@@ -178,6 +177,23 @@ pub(crate) fn tokenize<'a>(
                 tokens.push(Token {
                     source_location: state.current_source_location(1),
                     type_: TokenType::Minus,
+                });
+            }
+            state.advance();
+            continue;
+        }
+
+        if state.current() == '!' {
+            if state.peek() == '=' {
+                tokens.push(Token {
+                    source_location: state.current_source_location(2),
+                    type_: TokenType::ExclamationMarkEquals,
+                });
+                state.advance();
+            } else {
+                tokens.push(Token {
+                    source_location: state.current_source_location(1),
+                    type_: TokenType::ExclamationMark,
                 });
             }
             state.advance();

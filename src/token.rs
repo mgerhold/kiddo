@@ -138,6 +138,7 @@ pub enum TokenType {
     Arrow,
     At,
     ExclamationMark,
+    ExclamationMarkEquals,
     Colon,
     ColonColon,
     Semicolon,
