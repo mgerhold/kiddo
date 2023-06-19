@@ -5,13 +5,12 @@ use std::path::{Path, PathBuf};
 use bumpalo::Bump;
 use thiserror::Error;
 
+use crate::constants::SOURCE_FILE_EXTENSION;
 use crate::lexer::LexerError;
 use crate::parser::errors::ErrorReport;
 use crate::parser::ir_parsed::{Import, Module, QualifiedName};
 use crate::parser::parse_module;
 use crate::utils::AllocPath;
-
-const SOURCE_FILE_EXTENSION: &str = "ceat";
 
 #[derive(Debug, Error)]
 pub enum ImportError {

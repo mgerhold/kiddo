@@ -17,7 +17,7 @@ mod token;
 mod utils;
 
 pub fn main<'a>(bump_allocator: &'a Bump) -> Result<(), Box<dyn ErrorReport + 'a>> {
-    let main_module_filename = bump_allocator.alloc_path(std::path::PathBuf::from("test.ceat"));
+    let main_module_filename = bump_allocator.alloc_path(std::path::PathBuf::from("test.bs"));
     let main_module_canonical_path = bump_allocator.alloc_path(
         main_module_filename
             .canonicalize()
