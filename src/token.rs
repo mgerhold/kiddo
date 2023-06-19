@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::fmt::{Debug, Display, Formatter};
 use std::ops::Range;
 use std::path::Path;
 
@@ -10,12 +10,26 @@ struct LineColumnContents<'a> {
     contents: &'a str,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct SourceLocation<'a> {
     filename: &'a Path,
     source: &'a str,
     byte_offset: usize,
     num_bytes: usize,
+}
+
+impl Debug for SourceLocation<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "\"{}\" ({}:{}:{}, byte_offset={})",
+            self.lexeme(),
+            self.filename.display(),
+            self.line(),
+            self.column(),
+            self.byte_offset,
+        )
+    }
 }
 
 impl<'a> SourceLocation<'a> {
