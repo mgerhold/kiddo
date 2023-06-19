@@ -101,7 +101,7 @@ impl<'a> SourceLocation<'a> {
         let mut total_size = 0;
         for (i, contents) in self.source.lines().enumerate() {
             let start_offset = total_size;
-            let end_offset = total_size + contents.len();
+            let end_offset = total_size + contents.len() + 1; // + 1 for the newline
 
             if (start_offset..end_offset).contains(&self.byte_offset) {
                 let bytes_until_column = self.byte_offset - start_offset;
@@ -113,7 +113,7 @@ impl<'a> SourceLocation<'a> {
                     contents,
                 };
             }
-            total_size += contents.len();
+            total_size += contents.len() + 1; // + 1 for the newline
         }
         unreachable!("line with offset not found");
     }
