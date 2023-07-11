@@ -3,24 +3,46 @@ use std::ops::Deref;
 use std::path::{Path, PathBuf};
 
 use bumpalo::Bump;
-use thiserror::Error;
 
 use crate::constants::SOURCE_FILE_EXTENSION;
 use crate::lexer::LexerError;
-use crate::parser::errors::ErrorReport;
+use crate::parser::errors::{print_error, ErrorReport};
 use crate::parser::ir_parsed::{Import, Module, QualifiedName};
 use crate::parser::parse_module;
 use crate::utils::AllocPath;
 
-#[derive(Debug, Error)]
-pub enum ImportError {
-    #[error("unable to find module with filename '{path_to_search:1?}'")]
-    ModuleNotFound { path_to_search: PathBuf },
+#[derive(Debug)]
+pub enum ImportError<'a> {
+    ModuleNotFound {
+        import_path: QualifiedName<'a>,
+        path_to_search: PathBuf,
+    },
 }
 
-impl ErrorReport for ImportError {
+impl ErrorReport for ImportError<'_> {
     fn print_report(&self) {
-        todo!()
+        match self {
+            ImportError::ModuleNotFound {
+                import_path,
+                path_to_search,
+            } => {
+                let tokens = match import_path {
+                    QualifiedName::Absolute { tokens } => tokens,
+                    QualifiedName::Relative { tokens } => tokens,
+                };
+                print_error(
+                    &tokens
+                        .last()
+                        .expect("there should be at least one token")
+                        .source_location,
+                    format!(
+                        "import error: '{}' not found in import paths",
+                        path_to_search.display()
+                    ),
+                    "unable to resolve this import",
+                );
+            }
+        }
     }
 }
 
@@ -37,7 +59,7 @@ pub(crate) fn resolve_imports<'a>(
     module_directory: &'a Path,
     import_directories: &[&Path],
     module: &Module<'a>,
-) -> Result<ModuleImports<'a>, ImportError> {
+) -> Result<ModuleImports<'a>, ImportError<'a>> {
     let directories_for_absolute_imports = import_directories;
     let directories_for_relative_imports = &[module_directory][..];
 
@@ -83,6 +105,7 @@ pub(crate) fn resolve_imports<'a>(
         let path_to_search = path_from_name(what);
         let path = find_path(&path_to_search, possible_root_directories).ok_or_else(|| {
             ImportError::ModuleNotFound {
+                import_path: *what,
                 path_to_search: path_to_search.clone(),
             }
         })?;

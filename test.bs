@@ -31,11 +31,14 @@ struct S {
     list: ::std::containers::list,
 }
 
-/*function f(this: ->S, n: U32) ~> Nothing {
+function f(this: ->S, n: U32) ~> Nothing {
     //this!.number = this!.number + n;
 }
 
-function main() -> Nothing {
+function no_explicit_return_type(this: S, array: [U32; 15]) {
+}
+
+/*function main() -> Nothing {
     /*let n = 42;
     let m: mutable = 42;
     let o: U32 = 42;

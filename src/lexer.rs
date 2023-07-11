@@ -38,37 +38,51 @@ impl ErrorReport for LexerError<'_> {
                 print_error(
                     location,
                     format!("invalid input '{char}'"),
-                    "invalid character".to_string(),
+                    "invalid character",
                 );
             }
             LexerError::UnterminatedMultilineComment(location) => {
                 print_error(
                     location,
-                    "unterminated multiline comment".to_string(),
-                    "multiline comment starts here".to_string(),
+                    "unterminated multiline comment",
+                    "multiline comment starts here",
                 );
             }
-            LexerError::ExpectedBinaryDigit(_) => {
-                todo!()
-            }
-            LexerError::ExpectedOctalDigit(_) => {
-                todo!()
-            }
-            LexerError::ExpectedDecimalDigit(_) => {
-                todo!()
-            }
-            LexerError::ExpectedChar(_) => {
-                todo!()
-            }
-            LexerError::InvalidEscapeSequence(_, _) => {
-                todo!()
-            }
-            LexerError::UnexpectedCharacter { .. } => {
-                todo!()
-            }
-            LexerError::FailedToReadFile(_) => {
-                todo!()
-            }
+            LexerError::ExpectedBinaryDigit(location) => print_error(
+                location,
+                format!("'{}' is not a valid binary digit", location.lexeme()),
+                "error occurred here",
+            ),
+            LexerError::ExpectedOctalDigit(location) => print_error(
+                location,
+                format!("'{}' is not a valid octal digit", location.lexeme()),
+                "error occurred here",
+            ),
+            LexerError::ExpectedDecimalDigit(location) => print_error(
+                location,
+                format!("'{}' is not a valid decimal digit", location.lexeme()),
+                "error occurred here",
+            ),
+            LexerError::ExpectedChar(location) => print_error(
+                location,
+                format!("'{}' is not a valid char", location.lexeme()),
+                "error occurred here",
+            ),
+            LexerError::InvalidEscapeSequence(location, char) => print_error(
+                location,
+                format!("'\\{}' is not a valid escape sequence", char),
+                "error occurred here",
+            ),
+            LexerError::UnexpectedCharacter {
+                source_location,
+                expected,
+                actual,
+            } => print_error(
+                source_location,
+                format!("expected '{expected}', got '{actual}' instead"),
+                "unexpected character encountered here",
+            ),
+            LexerError::FailedToReadFile(error) => eprintln!("failed to read file: {:?}", error),
         }
     }
 }

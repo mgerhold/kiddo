@@ -5,31 +5,14 @@ use bumpalo::Bump;
 use crate::lexer::tokenize;
 use crate::parser::errors::{ErrorReport, ParserError};
 use crate::parser::ir_parsed::{
-    DataType, Definition, Identifier, Import, Module, Mutability, QualifiedName, StructDefinition,
-    StructMember,
+    DataType, Definition, FunctionDefinition, FunctionParameter, Identifier, Import, Module,
+    Mutability, QualifiedName, StructDefinition, StructMember,
 };
 use crate::token::{Token, TokenType};
 use crate::utils::parse_unsigned_int;
 
 pub(crate) mod errors;
 pub(crate) mod ir_parsed;
-
-fn ends_with_identifier<'a>(tokens: &'a [Token<'a>]) -> Result<(), ParserError<'a>> {
-    match tokens {
-        [] => Err(ParserError::TokenTypeMismatch {
-            expected: vec![TokenType::Identifier],
-            actual: None,
-        }),
-        [.., Token {
-            type_: TokenType::Identifier,
-            ..
-        }] => Ok(()),
-        [.., Token { type_, .. }] => Err(ParserError::TokenTypeMismatch {
-            expected: vec![TokenType::Identifier],
-            actual: Some(*type_),
-        }),
-    }
-}
 
 struct ParserState<'a> {
     tokens: &'a [Token<'a>],
@@ -55,11 +38,11 @@ impl<'a> ParserState<'a> {
     }
 
     fn expect(&mut self, type_: TokenType) -> Result<Token<'a>, ParserError<'a>> {
-        let current_token_type = self.current().map(|token| token.type_);
+        let current_token = self.current().expect("should at most be end of input");
         self.consume(type_)
             .ok_or_else(move || ParserError::TokenTypeMismatch {
                 expected: vec![type_],
-                actual: current_token_type,
+                actual: current_token,
             })
     }
 
@@ -96,7 +79,7 @@ impl<'a> ParserState<'a> {
                 // leftover tokens
                 Err(ParserError::TokenTypeMismatch {
                     expected: vec![TokenType::EndOfInput],
-                    actual: Some(self.current().expect("EndOfInput not yet reached").type_),
+                    actual: self.current().expect("EndOfInput not yet reached"),
                 })
             }
             _ => Ok(Module {
@@ -172,20 +155,21 @@ impl<'a> ParserState<'a> {
 
     fn definitions(&mut self) -> Result<Vec<Definition<'a>>, ParserError<'a>> {
         let mut result = Vec::new();
-        while let Some(
-            token @ Token {
-                type_: TokenType::Struct,
-                ..
-            },
-        ) = self.current()
-        {
-            match token.type_ {
-                TokenType::Struct => {
-                    result.push(Definition::Struct(self.struct_definition()?));
+
+        loop {
+            match self
+                .current()
+                .expect("we don't run over the EndOfInput token")
+                .type_
+            {
+                TokenType::Struct => result.push(Definition::Struct(self.struct_definition()?)),
+                TokenType::Function => {
+                    result.push(Definition::Function(self.function_definition()?))
                 }
-                _ => unreachable!(),
+                _ => break,
             }
         }
+
         Ok(result)
     }
 
@@ -245,6 +229,81 @@ impl<'a> ParserState<'a> {
         self.expect(TokenType::RightCurlyBracket)?;
 
         Ok(StructDefinition { name, members })
+    }
+
+    fn function_definition(&mut self) -> Result<FunctionDefinition<'a>, ParserError<'a>> {
+        /*
+        FunctionDefinition:
+            'function' (name=Identifier) '(' (parameters=ParameterList) ')' ('~>' (return_type=DataType))? '{'
+                (statements=Statements)?
+            '}'
+         */
+        assert!(matches!(
+            self.current(),
+            Some(Token {
+                type_: TokenType::Function,
+                ..
+            })
+        ));
+
+        self.advance(1); // consume 'function'
+        let name = self.identifier()?;
+        self.expect(TokenType::LeftParenthesis)?;
+        let parameters = self.parameter_list()?;
+        self.expect(TokenType::RightParenthesis)?;
+
+        let return_type = if self.consume(TokenType::TildeArrow).is_some() {
+            Some(self.data_type()?)
+        } else {
+            None
+        };
+
+        self.expect(TokenType::LeftCurlyBracket)?;
+
+        // todo: function body
+
+        self.expect(TokenType::RightCurlyBracket)?;
+
+        Ok(FunctionDefinition {
+            name,
+            parameters,
+            return_type,
+        })
+    }
+
+    fn parameter_list(&mut self) -> Result<Vec<FunctionParameter<'a>>, ParserError<'a>> {
+        /*
+        ParameterList:
+            (
+                (parameter+=FunctionParameter)
+                (',' parameter+=FunctionParameter)*
+                (',')?
+            )?
+         */
+        let mut parameters = Vec::new();
+        while let Some(Token {
+            type_: TokenType::Identifier,
+            ..
+        }) = self.current()
+        {
+            parameters.push(self.function_parameter()?);
+            if self.consume(TokenType::Comma).is_none() {
+                break;
+            }
+        }
+        Ok(parameters)
+    }
+
+    fn function_parameter(&mut self) -> Result<FunctionParameter<'a>, ParserError<'a>> {
+        /*
+        FunctionParameter:
+            (name=Identifier) ':' (type=DataType)
+         */
+        let name = self.identifier()?;
+        self.expect(TokenType::Colon)?;
+        let type_ = self.data_type()?;
+
+        Ok(FunctionParameter { name, type_ })
     }
 
     fn mutability(&mut self) -> Mutability {
@@ -382,19 +441,45 @@ impl<'a> ParserState<'a> {
         QualifiedName:
             ('::')? tokens+=Identifier ('::' tokens+=Identifier)*
          */
-        match self.current() {
+        let rest_of_tokens = &self.tokens[self.current_index..];
+
+        let is_absolute = match self.current() {
             Some(Token {
-                type_: TokenType::ColonColon | TokenType::Identifier,
+                type_: TokenType::ColonColon,
                 ..
-            }) => QualifiedName::try_from(
-                self.consume_until_none_of(&[TokenType::ColonColon, TokenType::Identifier]),
-            ),
-            Some(token) => Err(ParserError::TokenTypeMismatch {
-                expected: vec![TokenType::Identifier, TokenType::ColonColon],
-                actual: Some(token.type_),
-            }),
-            None => unreachable!("should at least find the EndOfInput token"),
+            }) => true,
+            Some(Token {
+                type_: TokenType::Identifier,
+                ..
+            }) => {
+                self.advance(1); // consume first identifier
+                false
+            }
+            Some(token) => {
+                return Err(ParserError::TokenTypeMismatch {
+                    expected: vec![TokenType::ColonColon, TokenType::Identifier],
+                    actual: token,
+                })
+            }
+            _ => unreachable!("cannot jump over EndOfInput token"),
+        };
+
+        let mut num_tokens = (!is_absolute).into();
+
+        while self.consume(TokenType::ColonColon).is_some() {
+            num_tokens += 1; // for '::'
+            self.expect(TokenType::Identifier)?;
+            num_tokens += 1; // for the identifier
         }
+
+        Ok(match is_absolute {
+            true => QualifiedName::Absolute {
+                tokens: &rest_of_tokens[..num_tokens],
+            },
+            false => QualifiedName::Relative {
+                tokens: &rest_of_tokens[..num_tokens],
+            },
+        })
     }
 
     fn repeated_tokens(
@@ -419,7 +504,7 @@ impl<'a> ParserState<'a> {
         if num_tokens == 0 {
             Err(ParserError::TokenTypeMismatch {
                 expected: vec![sequence[0]],
-                actual: self.current().map(|token| token.type_),
+                actual: self.current().expect("should at most be end of input"),
             })
         } else {
             Ok(&self.tokens[start_index..][..num_tokens])

@@ -1,23 +1,26 @@
-use std::error::Error;
+use std::fmt::Debug;
 
 use ariadne::{Label, Report, ReportKind, Source};
-use thiserror::Error;
 
 use crate::token::{SourceLocation, Token, TokenType};
 
-pub(crate) fn print_error(location: &SourceLocation, message: String, label_message: String) {
+pub(crate) fn print_error<S1: Into<String>, S2: Into<String>>(
+    location: &SourceLocation,
+    message: S1,
+    label_message: S2,
+) {
     let filename = location.filename();
     let filename = filename.to_string_lossy();
     let filename = filename.strip_prefix("\\\\?\\").unwrap();
     Report::build(ReportKind::Error, filename, location.char_offset())
-        .with_message(message)
-        .with_label(Label::new((filename, location.char_span())).with_message(label_message))
+        .with_message(message.into())
+        .with_label(Label::new((filename, location.char_span())).with_message(label_message.into()))
         .finish()
         .print((filename, Source::from(location.source())))
         .unwrap();
 }
 
-pub trait ErrorReport: Error {
+pub trait ErrorReport: Debug {
     fn print_report(&self);
 }
 
@@ -30,22 +33,68 @@ where
     }
 }
 
-// todo: remove thiserror crate
-#[derive(Error, Debug)]
+#[derive(Debug)]
 pub enum ParserError<'a> {
-    #[error("token type mismatch (expected '{expected:?}', actual '{actual:?}'")]
     TokenTypeMismatch {
         expected: Vec<TokenType>,
-        actual: Option<TokenType>,
+        actual: Token<'a>,
     },
-    #[error("unexpected end of input (expected '{expected:?}')")]
-    UnexpectedEndOfInput { expected: &'static [TokenType] },
-    #[error("integer literal '{}' out of bounds", token.lexeme())]
-    IntegerLiteralOutOfBounds { token: Token<'a> },
+    UnexpectedEndOfInput {
+        expected: &'static [TokenType],
+        end_of_input_token: Option<Token<'a>>,
+    },
+    IntegerLiteralOutOfBounds {
+        token: Token<'a>,
+    },
 }
 
 impl ErrorReport for ParserError<'_> {
     fn print_report(&self) {
-        todo!()
+        match self {
+            ParserError::TokenTypeMismatch { expected, actual } => {
+                let str_expected: Vec<String> = expected
+                    .iter()
+                    .map(|token| format!("'{token:?}'"))
+                    .collect();
+
+                let joined = str_expected.join(" or ");
+                print_error(
+                    &actual.source_location,
+                    format!(
+                        "unexpected token type '{:?}' (expected {joined})",
+                        actual.type_
+                    ),
+                    "unexpected token encountered here",
+                );
+            }
+            ParserError::UnexpectedEndOfInput {
+                expected,
+                end_of_input_token,
+            } => {
+                let str_expected: Vec<String> = expected
+                    .iter()
+                    .map(|token| format!("'{:?}'", token))
+                    .collect();
+
+                let joined = str_expected.join(" or ");
+                match end_of_input_token {
+                    Some(token) => {
+                        print_error(
+                            &token.source_location,
+                            format!("unexpected end of input (expected {joined})"),
+                            "unexpected token encountered here",
+                        );
+                    }
+                    None => {
+                        eprintln!("unexpected end of input (expected {joined})")
+                    }
+                }
+            }
+            ParserError::IntegerLiteralOutOfBounds { token } => print_error(
+                &token.source_location,
+                format!("integer literal '{}' out of bounds", token.lexeme()),
+                "this integer literal is out of bounds",
+            ),
+        }
     }
 }

@@ -1,8 +1,6 @@
 use std::path::PathBuf;
 
 use crate::constants::BackseatSize;
-use crate::parser::ends_with_identifier;
-use crate::parser::errors::ParserError;
 use crate::token::{Token, TokenType};
 
 #[derive(Debug, Clone)]
@@ -35,12 +33,26 @@ pub(crate) enum Import<'a> {
 #[derive(Debug, Clone)]
 pub(crate) enum Definition<'a> {
     Struct(StructDefinition<'a>),
+    Function(FunctionDefinition<'a>),
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct StructDefinition<'a> {
     pub(crate) name: Identifier<'a>,
     pub(crate) members: Vec<StructMember<'a>>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct FunctionDefinition<'a> {
+    pub(crate) name: Identifier<'a>,
+    pub(crate) parameters: Vec<FunctionParameter<'a>>,
+    pub(crate) return_type: Option<DataType<'a>>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct FunctionParameter<'a> {
+    pub(crate) name: Identifier<'a>,
+    pub(crate) type_: DataType<'a>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -75,7 +87,7 @@ pub(crate) struct StructMember<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum QualifiedName<'a> {
+pub enum QualifiedName<'a> {
     Absolute { tokens: &'a [Token<'a>] },
     Relative { tokens: &'a [Token<'a>] },
 }
@@ -96,64 +108,6 @@ impl From<&QualifiedName<'_>> for PathBuf {
             .map(|token| PathBuf::from(token.lexeme()))
             .collect();
         path
-    }
-}
-
-impl<'a> QualifiedName<'a> {
-    fn are_repeated(repeated: &[TokenType], in_: &[Token]) -> Result<(), ParserError<'a>> {
-        assert!(!repeated.is_empty());
-
-        for (token, &expected) in in_.iter().zip(repeated.iter().cycle()) {
-            if token.type_ != expected {
-                return Err(ParserError::TokenTypeMismatch {
-                    expected: vec![expected],
-                    actual: Some(token.type_),
-                });
-            }
-        }
-
-        Ok(())
-    }
-}
-
-impl<'a> TryFrom<&'a [Token<'a>]> for QualifiedName<'a> {
-    type Error = ParserError<'a>;
-
-    fn try_from(tokens: &'a [Token<'a>]) -> Result<Self, Self::Error> {
-        match tokens {
-            [Token {
-                type_: TokenType::ColonColon,
-                ..
-            }] => Err(ParserError::TokenTypeMismatch {
-                expected: vec![TokenType::Identifier],
-                actual: None,
-            }),
-            [Token {
-                type_: TokenType::ColonColon,
-                ..
-            }, rest @ ..] => {
-                assert!(!rest.is_empty());
-                ends_with_identifier(tokens)?;
-                Self::are_repeated(&[TokenType::Identifier, TokenType::ColonColon], rest)?;
-                Ok(QualifiedName::Absolute { tokens })
-            }
-            [Token {
-                type_: TokenType::Identifier,
-                ..
-            }, rest @ ..] => {
-                ends_with_identifier(tokens)?;
-                Self::are_repeated(&[TokenType::ColonColon, TokenType::Identifier], rest)?;
-                Ok(QualifiedName::Relative { tokens })
-            }
-            [first, ..] => Err(ParserError::TokenTypeMismatch {
-                expected: vec![TokenType::Identifier, TokenType::ColonColon],
-                actual: Some(first.type_),
-            }),
-            [] => Err(ParserError::TokenTypeMismatch {
-                expected: vec![TokenType::Identifier, TokenType::ColonColon],
-                actual: None,
-            }),
-        }
     }
 }
 
