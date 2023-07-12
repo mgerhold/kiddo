@@ -29,8 +29,11 @@ impl<'a> ParserState<'a> {
         }
     }
 
-    fn current(&self) -> Option<Token<'a>> {
-        self.tokens.get(self.current_index).cloned()
+    fn current(&self) -> Token<'a> {
+        match self.tokens.get(self.current_index) {
+            Some(token) => token.clone(),
+            None => self.tokens.last().expect("token list is not empty").clone(),
+        }
     }
 
     fn peek(&self) -> Option<Token<'a>> {
@@ -38,7 +41,7 @@ impl<'a> ParserState<'a> {
     }
 
     fn expect(&mut self, type_: TokenType) -> Result<Token<'a>, ParserError<'a>> {
-        let current_token = self.current().expect("should at most be end of input");
+        let current_token = self.current();
         self.consume(type_)
             .ok_or_else(move || ParserError::TokenTypeMismatch {
                 expected: vec![type_],
@@ -47,7 +50,7 @@ impl<'a> ParserState<'a> {
     }
 
     fn consume(&mut self, type_: TokenType) -> Option<Token<'a>> {
-        let result = self.current().expect("should at least be EndOfInput");
+        let result = self.current();
         if result.type_ == type_ {
             self.advance(1);
             Some(result)
@@ -73,13 +76,12 @@ impl<'a> ParserState<'a> {
         let imports = self.imports()?; // maybe empty
         let definitions = self.definitions()?; // maybe empty
 
-        assert!(self.current().is_some());
         match self.current() {
-            Some(Token { type_, .. }) if type_ != TokenType::EndOfInput => {
+            Token { type_, .. } if type_ != TokenType::EndOfInput => {
                 // leftover tokens
                 Err(ParserError::TokenTypeMismatch {
                     expected: vec![TokenType::EndOfInput],
-                    actual: self.current().expect("EndOfInput not yet reached"),
+                    actual: self.current(),
                 })
             }
             _ => Ok(Module {
@@ -95,10 +97,10 @@ impl<'a> ParserState<'a> {
             (imports+=Import)*
          */
         let mut imports = Vec::new();
-        while let Some(Token {
+        while let Token {
             type_: TokenType::Import | TokenType::From,
             ..
-        }) = self.current()
+        } = self.current()
         {
             imports.push(self.import()?);
         }
@@ -113,14 +115,12 @@ impl<'a> ParserState<'a> {
          */
         assert!(matches!(
             self.current(),
-            Some(Token {
+            Token {
                 type_: TokenType::Import | TokenType::From,
                 ..
-            })
+            }
         ));
-        let token = self
-            .current()
-            .expect("checked existence of token by caller");
+        let token = self.current();
         self.advance(1); // consume 'import' or 'from'
 
         let import = match token.type_ {
@@ -157,11 +157,7 @@ impl<'a> ParserState<'a> {
         let mut result = Vec::new();
 
         loop {
-            match self
-                .current()
-                .expect("we don't run over the EndOfInput token")
-                .type_
-            {
+            match self.current().type_ {
                 TokenType::Struct => result.push(Definition::Struct(self.struct_definition()?)),
                 TokenType::Function => {
                     result.push(Definition::Function(self.function_definition()?))
@@ -192,10 +188,10 @@ impl<'a> ParserState<'a> {
         */
         assert!(matches!(
             self.current(),
-            Some(Token {
+            Token {
                 type_: TokenType::Struct,
                 ..
-            })
+            }
         ));
 
         self.advance(1); // consume 'struct'
@@ -216,10 +212,10 @@ impl<'a> ParserState<'a> {
             if !comma_present
                 || matches!(
                     self.current(),
-                    Some(Token {
+                    Token {
                         type_: TokenType::RightCurlyBracket,
                         ..
-                    })
+                    }
                 )
             {
                 break;
@@ -240,10 +236,10 @@ impl<'a> ParserState<'a> {
          */
         assert!(matches!(
             self.current(),
-            Some(Token {
+            Token {
                 type_: TokenType::Function,
                 ..
-            })
+            }
         ));
 
         self.advance(1); // consume 'function'
@@ -281,10 +277,10 @@ impl<'a> ParserState<'a> {
             )?
          */
         let mut parameters = Vec::new();
-        while let Some(Token {
+        while let Token {
             type_: TokenType::Identifier,
             ..
-        }) = self.current()
+        } = self.current()
         {
             parameters.push(self.function_parameter()?);
             if self.consume(TokenType::Comma).is_none() {
@@ -334,7 +330,7 @@ impl<'a> ParserState<'a> {
         };
 
         let mut types = Vec::new();
-        while is_valid_type_start(self.current().expect("should be at least EndOfInput")) {
+        while is_valid_type_start(self.current()) {
             types.push(self.data_type()?);
             if self.consume(TokenType::Comma).is_none() {
                 break;
@@ -352,7 +348,7 @@ impl<'a> ParserState<'a> {
             | ('->' mutability=Mutability pointee_type=DataType)
             | ('Function' '(' parameter_types=TypeList ')' '~>' return_type=DataType)
          */
-        match self.current().expect("should be at least EndOfInput") {
+        match self.current() {
             Token {
                 type_: TokenType::LeftSquareBracket,
                 ..
@@ -444,24 +440,23 @@ impl<'a> ParserState<'a> {
         let rest_of_tokens = &self.tokens[self.current_index..];
 
         let is_absolute = match self.current() {
-            Some(Token {
+            Token {
                 type_: TokenType::ColonColon,
                 ..
-            }) => true,
-            Some(Token {
+            } => true,
+            Token {
                 type_: TokenType::Identifier,
                 ..
-            }) => {
+            } => {
                 self.advance(1); // consume first identifier
                 false
             }
-            Some(token) => {
+            token => {
                 return Err(ParserError::TokenTypeMismatch {
                     expected: vec![TokenType::ColonColon, TokenType::Identifier],
                     actual: token,
                 })
             }
-            _ => unreachable!("cannot jump over EndOfInput token"),
         };
 
         let mut num_tokens = (!is_absolute).into();
@@ -504,7 +499,7 @@ impl<'a> ParserState<'a> {
         if num_tokens == 0 {
             Err(ParserError::TokenTypeMismatch {
                 expected: vec![sequence[0]],
-                actual: self.current().expect("should at most be end of input"),
+                actual: self.current(),
             })
         } else {
             Ok(&self.tokens[start_index..][..num_tokens])
