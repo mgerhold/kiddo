@@ -393,6 +393,8 @@ pub(crate) fn tokenize<'a>(
                 "true" => TokenType::True,
                 "false" => TokenType::False,
                 "nothing" => TokenType::Nothing,
+                "yield" => TokenType::Yield,
+                "export" => TokenType::Export,
                 _ => TokenType::Identifier,
             };
 

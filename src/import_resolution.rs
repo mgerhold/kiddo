@@ -7,7 +7,7 @@ use bumpalo::Bump;
 use crate::constants::SOURCE_FILE_EXTENSION;
 use crate::lexer::LexerError;
 use crate::parser::errors::{print_error, ErrorReport};
-use crate::parser::ir_parsed::{Import, Module, QualifiedName};
+use crate::parser::ir_parsed::{Definition, Import, Module, QualifiedName};
 use crate::parser::parse_module;
 use crate::utils::AllocPath;
 
@@ -53,12 +53,13 @@ fn find_path(relative_path: &Path, possible_roots: &[&Path]) -> Option<PathBuf> 
         .find(|path| path.exists())
 }
 
-type ModuleImports<'a> = Vec<(Import<'a>, PathBuf)>;
+type ModuleImports<'a> = &'a [(Import<'a>, &'a Path)];
 
 pub(crate) fn resolve_imports<'a>(
     module_directory: &'a Path,
     import_directories: &[&Path],
     module: &Module<'a>,
+    bump_allocator: &'a Bump,
 ) -> Result<ModuleImports<'a>, ImportError<'a>> {
     let directories_for_absolute_imports = import_directories;
     let directories_for_relative_imports = &[module_directory][..];
@@ -68,7 +69,7 @@ pub(crate) fn resolve_imports<'a>(
         path.set_extension(SOURCE_FILE_EXTENSION);
         path
     };
-    let mut imports = ModuleImports::new();
+    let mut imports = Vec::new();
     for import in module.imports.iter() {
         let (what, possible_root_directories) = match import {
             Import::Import {
@@ -103,45 +104,51 @@ pub(crate) fn resolve_imports<'a>(
             } => (what_or_where, directories_for_relative_imports),
         };
         let path_to_search = path_from_name(what);
-        let path = find_path(&path_to_search, possible_root_directories).ok_or_else(|| {
-            ImportError::ModuleNotFound {
-                import_path: *what,
-                path_to_search: path_to_search.clone(),
-            }
-        })?;
+        let path = bump_allocator.alloc_path(
+            find_path(&path_to_search, possible_root_directories).ok_or_else(|| {
+                ImportError::ModuleNotFound {
+                    import_path: *what,
+                    path_to_search: path_to_search.clone(),
+                }
+            })?,
+        );
         imports.push((*import, path));
     }
+    let imports = bump_allocator.alloc_slice_copy(&imports);
     Ok(imports)
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct ModuleWithImports<'a> {
     pub(crate) canonical_path: &'a Path,
     pub(crate) module: Module<'a>,
     pub(crate) imports: ModuleImports<'a>,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ModuleWithExports<'a> {
+    pub(crate) module_with_imports: &'a ModuleWithImports<'a>,
+    pub(crate) exported_definitions: &'a [Definition<'a>],
+}
+
 pub(crate) fn resolve_all_imports<'a>(
     main_module: ModuleWithImports<'a>,
     import_directories: &[&Path],
     bump_allocator: &'a Bump,
-) -> Result<Vec<ModuleWithImports<'a>>, Box<dyn ErrorReport + 'a>> {
+) -> Result<&'a [ModuleWithImports<'a>], Box<dyn ErrorReport + 'a>> {
     println!("main module is {}", main_module.canonical_path.display());
 
     let mut processed_files = HashSet::new();
     processed_files.insert(main_module.canonical_path.deref().to_owned());
 
-    let mut files_to_process: VecDeque<_> = main_module
-        .imports
-        .iter()
-        .map(|(_, path)| path.clone())
-        .collect();
+    let mut files_to_process: VecDeque<_> =
+        main_module.imports.iter().map(|(_, path)| *path).collect();
 
     let mut all_modules = vec![main_module];
 
     while !files_to_process.is_empty() {
         let next_filename = files_to_process.pop_back().expect("queue is not empty");
-        if processed_files.contains(&next_filename) {
+        if processed_files.contains(next_filename) {
             continue;
         }
 
@@ -158,15 +165,20 @@ pub(crate) fn resolve_all_imports<'a>(
         let module_directory = canonical_filename
             .parent()
             .expect("variable contains complete filename and thus has a parent");
-        let imports = resolve_imports(module_directory, import_directories, &module)?;
+        let imports = resolve_imports(
+            module_directory,
+            import_directories,
+            &module,
+            bump_allocator,
+        )?;
 
-        for (_, path) in &imports {
+        for (_, path) in imports {
             println!("\timport is: {}", path.display());
         }
 
         processed_files.insert(canonical_filename.deref().to_owned());
 
-        files_to_process.extend(imports.iter().map(|(_, path)| path.clone()));
+        files_to_process.extend(imports.iter().map(|(_, path)| *path));
 
         all_modules.push(ModuleWithImports {
             canonical_path: canonical_filename,
@@ -174,6 +186,8 @@ pub(crate) fn resolve_all_imports<'a>(
             imports,
         });
     }
+
+    let all_modules = bump_allocator.alloc_slice_copy(&all_modules);
 
     Ok(all_modules)
 }

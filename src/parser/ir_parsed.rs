@@ -3,10 +3,10 @@ use std::path::PathBuf;
 use crate::constants::BackseatSize;
 use crate::token::{Token, TokenType};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct Module<'a> {
-    pub(crate) imports: Vec<Import<'a>>,
-    pub(crate) definitions: Vec<Definition<'a>>,
+    pub(crate) imports: &'a [Import<'a>],
+    pub(crate) definitions: &'a [Definition<'a>],
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -30,26 +30,29 @@ pub(crate) enum Import<'a> {
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum Definition<'a> {
     Struct(StructDefinition<'a>),
     Function(FunctionDefinition<'a>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct StructDefinition<'a> {
+    pub(crate) is_exported: bool,
     pub(crate) name: Identifier<'a>,
-    pub(crate) members: Vec<StructMember<'a>>,
+    pub(crate) members: &'a [StructMember<'a>],
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct FunctionDefinition<'a> {
+    pub(crate) is_exported: bool,
     pub(crate) name: Identifier<'a>,
-    pub(crate) parameters: Vec<FunctionParameter<'a>>,
+    pub(crate) parameters: &'a [FunctionParameter<'a>],
     pub(crate) return_type: Option<DataType<'a>>,
+    pub(crate) body: Block<'a>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct FunctionParameter<'a> {
     pub(crate) name: Identifier<'a>,
     pub(crate) type_: DataType<'a>,
@@ -61,7 +64,7 @@ pub(crate) enum Mutability {
     Mutable,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum DataType<'a> {
     Named {
         name: QualifiedName<'a>,
@@ -75,15 +78,39 @@ pub(crate) enum DataType<'a> {
         size: BackseatSize,
     },
     FunctionPointer {
-        parameter_types: Vec<DataType<'a>>,
+        parameter_types: &'a [DataType<'a>],
         return_type: &'a DataType<'a>,
     },
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Copy)]
 pub(crate) struct StructMember<'a> {
     pub(crate) name: Identifier<'a>,
     pub(crate) type_: DataType<'a>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Block<'a> {
+    pub(crate) statements: &'a [Statement<'a>],
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Expression<'a> {
+    IntegerLiteral(Token<'a>),
+    BinaryOperator {
+        lhs: &'a Expression<'a>,
+        operator: Token<'a>,
+        rhs: &'a Expression<'a>,
+    },
+    Block(Block<'a>),
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Statement<'a> {
+    #[allow(clippy::enum_variant_names)]
+    ExpressionStatement(Expression<'a>),
+    Yield(Expression<'a>),
+    Return(Option<Expression<'a>>),
 }
 
 #[derive(Debug, Clone, Copy)]

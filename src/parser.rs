@@ -5,8 +5,8 @@ use bumpalo::Bump;
 use crate::lexer::tokenize;
 use crate::parser::errors::{ErrorReport, ParserError};
 use crate::parser::ir_parsed::{
-    DataType, Definition, FunctionDefinition, FunctionParameter, Identifier, Import, Module,
-    Mutability, QualifiedName, StructDefinition, StructMember,
+    Block, DataType, Definition, Expression, FunctionDefinition, FunctionParameter, Identifier,
+    Import, Module, Mutability, QualifiedName, Statement, StructDefinition, StructMember,
 };
 use crate::token::{Token, TokenType};
 use crate::utils::parse_unsigned_int;
@@ -44,7 +44,7 @@ impl<'a> ParserState<'a> {
         let current_token = self.current();
         self.consume(type_)
             .ok_or_else(move || ParserError::TokenTypeMismatch {
-                expected: vec![type_],
+                expected: self.bump_allocator.alloc([type_]),
                 actual: current_token,
             })
     }
@@ -80,14 +80,18 @@ impl<'a> ParserState<'a> {
             Token { type_, .. } if type_ != TokenType::EndOfInput => {
                 // leftover tokens
                 Err(ParserError::TokenTypeMismatch {
-                    expected: vec![TokenType::EndOfInput],
+                    expected: &[TokenType::EndOfInput],
                     actual: self.current(),
                 })
             }
-            _ => Ok(Module {
-                imports,
-                definitions,
-            }),
+            _ => {
+                let imports = self.bump_allocator.alloc_slice_copy(&imports);
+                let definitions = self.bump_allocator.alloc_slice_copy(&definitions);
+                Ok(Module {
+                    imports,
+                    definitions,
+                })
+            }
         }
     }
 
@@ -157,19 +161,33 @@ impl<'a> ParserState<'a> {
         let mut result = Vec::new();
 
         loop {
-            match self.current().type_ {
-                TokenType::Struct => result.push(Definition::Struct(self.struct_definition()?)),
-                TokenType::Function => {
-                    result.push(Definition::Function(self.function_definition()?))
-                }
-                _ => break,
+            let is_exported = self.consume(TokenType::Export).is_some();
+            let definition = self.definition(is_exported);
+            match (is_exported, definition) {
+                (_, Ok(definition)) => result.push(definition),
+                (true, Err(error)) => return Err(error),
+                (false, Err(_)) => break,
             }
         }
 
         Ok(result)
     }
 
-    fn struct_definition(&mut self) -> Result<StructDefinition<'a>, ParserError<'a>> {
+    fn definition(&mut self, is_exported: bool) -> Result<Definition<'a>, ParserError<'a>> {
+        match self.current().type_ {
+            TokenType::Struct => Ok(Definition::Struct(self.struct_definition(is_exported)?)),
+            TokenType::Function => Ok(Definition::Function(self.function_definition(is_exported)?)),
+            _ => Err(ParserError::TokenTypeMismatch {
+                expected: &[TokenType::Struct, TokenType::Function],
+                actual: self.current(),
+            }),
+        }
+    }
+
+    fn struct_definition(
+        &mut self,
+        is_exported: bool,
+    ) -> Result<StructDefinition<'a>, ParserError<'a>> {
         /*
         StructDefinition:
             'struct' (name=Identifier) '{'
@@ -224,10 +242,17 @@ impl<'a> ParserState<'a> {
 
         self.expect(TokenType::RightCurlyBracket)?;
 
-        Ok(StructDefinition { name, members })
+        Ok(StructDefinition {
+            is_exported,
+            name,
+            members: self.bump_allocator.alloc_slice_copy(&members),
+        })
     }
 
-    fn function_definition(&mut self) -> Result<FunctionDefinition<'a>, ParserError<'a>> {
+    fn function_definition(
+        &mut self,
+        is_exported: bool,
+    ) -> Result<FunctionDefinition<'a>, ParserError<'a>> {
         /*
         FunctionDefinition:
             'function' (name=Identifier) '(' (parameters=ParameterList) ')' ('~>' (return_type=DataType))? '{'
@@ -254,16 +279,14 @@ impl<'a> ParserState<'a> {
             None
         };
 
-        self.expect(TokenType::LeftCurlyBracket)?;
-
-        // todo: function body
-
-        self.expect(TokenType::RightCurlyBracket)?;
+        let body = self.block()?;
 
         Ok(FunctionDefinition {
+            is_exported,
             name,
-            parameters,
+            parameters: self.bump_allocator.alloc_slice_copy(&parameters),
             return_type,
+            body,
         })
     }
 
@@ -300,6 +323,114 @@ impl<'a> ParserState<'a> {
         let type_ = self.data_type()?;
 
         Ok(FunctionParameter { name, type_ })
+    }
+
+    fn block(&mut self) -> Result<Block<'a>, ParserError<'a>> {
+        self.expect(TokenType::LeftCurlyBracket)?;
+        let mut statements: Vec<Statement> = Vec::new();
+        while !matches!(
+            self.current(),
+            Token {
+                type_: TokenType::RightCurlyBracket,
+                ..
+            }
+        ) {
+            statements.push(self.statement()?);
+        }
+        assert_eq!(self.current().type_, TokenType::RightCurlyBracket);
+        self.advance(1); // consume '}'
+        Ok(Block {
+            statements: self.bump_allocator.alloc_slice_copy(&statements),
+        })
+    }
+
+    fn statement(&mut self) -> Result<Statement<'a>, ParserError<'a>> {
+        match self.current().type_ {
+            TokenType::Yield => self.yield_statement(),
+            TokenType::Return => self.return_statement(),
+            _ => self.expression_statement(),
+        }
+    }
+
+    fn yield_statement(&mut self) -> Result<Statement<'a>, ParserError<'a>> {
+        self.expect(TokenType::Yield)?;
+        let expression = self.expression()?;
+        self.expect(TokenType::Semicolon)?;
+        Ok(Statement::Yield(expression))
+    }
+
+    fn return_statement(&mut self) -> Result<Statement<'a>, ParserError<'a>> {
+        self.expect(TokenType::Return)?;
+        let has_return_value = self.current().type_ != TokenType::Semicolon;
+        let return_value = if has_return_value {
+            Some(self.expression()?)
+        } else {
+            None
+        };
+        self.expect(TokenType::Semicolon)?;
+        Ok(Statement::Return(return_value))
+    }
+
+    fn expression_statement(&mut self) -> Result<Statement<'a>, ParserError<'a>> {
+        let expression = self.expression()?;
+        self.expect(TokenType::Semicolon)?;
+        Ok(Statement::ExpressionStatement(expression))
+    }
+
+    fn expression(&mut self) -> Result<Expression<'a>, ParserError<'a>> {
+        self.addition()
+    }
+
+    fn addition(&mut self) -> Result<Expression<'a>, ParserError<'a>> {
+        let mut accumulator = self.multiplication()?;
+        while let Token {
+            type_: TokenType::Plus,
+            ..
+        } = self.current()
+        {
+            let operator = self.current();
+            self.advance(1); // consume operator
+            accumulator = Expression::BinaryOperator {
+                lhs: self.bump_allocator.alloc(accumulator),
+                operator,
+                rhs: self.bump_allocator.alloc(self.multiplication()?),
+            }
+        }
+        Ok(accumulator)
+    }
+
+    fn multiplication(&mut self) -> Result<Expression<'a>, ParserError<'a>> {
+        let mut accumulator = self.primary()?;
+        while let Token {
+            type_: TokenType::Asterisk,
+            ..
+        } = self.current()
+        {
+            let operator = self.current();
+            self.advance(1); // consume operator
+            accumulator = Expression::BinaryOperator {
+                lhs: self.bump_allocator.alloc(accumulator),
+                operator,
+                rhs: self.bump_allocator.alloc(self.primary()?),
+            }
+        }
+        Ok(accumulator)
+    }
+
+    fn primary(&mut self) -> Result<Expression<'a>, ParserError<'a>> {
+        if self.consume(TokenType::LeftParenthesis).is_some() {
+            let sub_expression = self.expression()?;
+            self.expect(TokenType::RightParenthesis)?;
+            Ok(sub_expression)
+        } else if let Token {
+            type_: TokenType::LeftCurlyBracket,
+            ..
+        } = self.current()
+        {
+            Ok(Expression::Block(self.block()?))
+        } else {
+            Ok(Expression::IntegerLiteral(self.expect(TokenType::Integer)?))
+        }
     }
 
     fn mutability(&mut self) -> Mutability {
@@ -392,7 +523,7 @@ impl<'a> ParserState<'a> {
                 self.expect(TokenType::TildeArrow)?;
                 let return_type = self.bump_allocator.alloc(self.data_type()?);
                 Ok(DataType::FunctionPointer {
-                    parameter_types,
+                    parameter_types: self.bump_allocator.alloc_slice_copy(&parameter_types),
                     return_type,
                 })
             }
@@ -453,7 +584,7 @@ impl<'a> ParserState<'a> {
             }
             token => {
                 return Err(ParserError::TokenTypeMismatch {
-                    expected: vec![TokenType::ColonColon, TokenType::Identifier],
+                    expected: &[TokenType::ColonColon, TokenType::Identifier],
                     actual: token,
                 })
             }
@@ -498,7 +629,7 @@ impl<'a> ParserState<'a> {
 
         if num_tokens == 0 {
             Err(ParserError::TokenTypeMismatch {
-                expected: vec![sequence[0]],
+                expected: self.bump_allocator.alloc([sequence[0]]),
                 actual: self.current(),
             })
         } else {

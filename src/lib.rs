@@ -41,8 +41,12 @@ pub fn main<'a>(bump_allocator: &'a Bump) -> Result<(), Box<dyn ErrorReport + 'a
         bump_allocator,
     )?;
 
-    let main_module_imports =
-        resolve_imports(main_module_directory, &import_directories, &main_module)?;
+    let main_module_imports = resolve_imports(
+        main_module_directory,
+        &import_directories,
+        &main_module,
+        bump_allocator,
+    )?;
     let main_module = ModuleWithImports {
         canonical_path: main_module_canonical_path,
         module: main_module,

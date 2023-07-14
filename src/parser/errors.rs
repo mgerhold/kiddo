@@ -36,7 +36,7 @@ where
 #[derive(Debug)]
 pub enum ParserError<'a> {
     TokenTypeMismatch {
-        expected: Vec<TokenType>,
+        expected: &'a [TokenType],
         actual: Token<'a>,
     },
     UnexpectedEndOfInput {

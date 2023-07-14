@@ -181,6 +181,8 @@ pub enum TokenType {
     True,
     False,
     Nothing,
+    Yield,
+    Export,
 
     Identifier,
 
