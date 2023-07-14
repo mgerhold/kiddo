@@ -5,6 +5,7 @@ use std::ops::Deref;
 
 use bumpalo::Bump;
 
+use crate::duplicate_identifiers_check::validate_no_duplicate_identifiers;
 use crate::import_resolution::{
     check_imports, find_all_imports, find_imports, gather_all_exports, resolve_all_imports,
     ModuleWithImports,
@@ -14,6 +15,7 @@ use crate::parser::parse_module;
 use crate::utils::AllocPath;
 
 mod constants;
+mod duplicate_identifiers_check;
 mod import_resolution;
 mod lexer;
 mod parser;
@@ -56,6 +58,8 @@ pub fn main<'a>(bump_allocator: &'a Bump) -> Result<(), Box<dyn ErrorReport + 'a
         imports: main_module_imports,
     };
     let all_modules = find_all_imports(main_module, &import_directories, bump_allocator)?;
+
+    validate_no_duplicate_identifiers(all_modules)?;
 
     let all_modules = gather_all_exports(all_modules, bump_allocator);
 
