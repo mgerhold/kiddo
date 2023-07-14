@@ -1,5 +1,5 @@
 use crate::import_resolution::ModuleWithImports;
-use crate::parser::errors::{print_advice, print_error, ErrorReport};
+use crate::parser::errors::{print_error, print_note, ErrorReport};
 use crate::parser::ir_parsed::Definition;
 
 #[derive(Debug)]
@@ -18,7 +18,7 @@ impl ErrorReport for DuplicateIdentifiersError<'_> {
             ),
             "see this definition",
         );
-        print_advice(
+        print_note(
             &self.previous_definition.identifier().token.source_location,
             "previous definition occurred here",
             "see this definition",

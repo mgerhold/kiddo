@@ -6,7 +6,7 @@ use bumpalo::Bump;
 
 use crate::constants::SOURCE_FILE_EXTENSION;
 use crate::lexer::LexerError;
-use crate::parser::errors::{print_advice, print_error, ErrorReport};
+use crate::parser::errors::{print_error, print_note, ErrorReport};
 use crate::parser::ir_parsed::{Definition, Identifier, Import, Module, QualifiedName};
 use crate::parser::parse_module;
 use crate::utils::AllocPath;
@@ -62,7 +62,7 @@ impl ErrorReport for ImportError<'_> {
                     "symbol not found",
                 );
                 if let Some(non_exported_definition) = non_exported_definition {
-                    print_advice(
+                    print_note(
                         &non_exported_definition.identifier().token.source_location,
                         "there is a definition with the requested name that has not been exported",
                         "did you forget to export this definition?",

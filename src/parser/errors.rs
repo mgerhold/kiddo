@@ -1,6 +1,6 @@
 use std::fmt::Debug;
 
-use ariadne::{Label, Report, ReportKind, Source};
+use ariadne::{Color, Label, Report, ReportKind, Source};
 
 use crate::token::{SourceLocation, Token, TokenType};
 
@@ -12,12 +12,17 @@ pub(crate) fn print_error<S1: Into<String>, S2: Into<String>>(
     print_report(ReportKind::Error, location, message, label_message);
 }
 
-pub(crate) fn print_advice<S1: Into<String>, S2: Into<String>>(
+pub(crate) fn print_note<S1: Into<String>, S2: Into<String>>(
     location: &SourceLocation,
     message: S1,
     label_message: S2,
 ) {
-    print_report(ReportKind::Advice, location, message, label_message);
+    print_report(
+        ReportKind::Custom("Note", Color::Blue),
+        location,
+        message,
+        label_message,
+    );
 }
 
 fn print_report<S1: Into<String>, S2: Into<String>>(
