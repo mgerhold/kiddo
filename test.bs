@@ -6,28 +6,28 @@ import std::containers::dyn_array as darray;
 import std::containers::list as list;
 import ::std::containers::list;
 
-export struct S {
+export struct S1 {
     number: U32,
     another: U32,
     function_pointer: Function(U32, ::std::String, [->mutable Function(U8, U8) ~> U8; 0xA]) ~> Nothing,
 }
 
-struct S { }
+struct S2 { }
 
-struct S {
+struct S3 {
     n: U32
 }
 
-struct S {
+struct S4 {
     n: U32,
 }
 
-struct S {
+struct S5 {
     a: U32,
     b: U32
 }
 
-struct S {
+struct S6 {
     list: ::std::containers::list,
 }
 
