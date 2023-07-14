@@ -36,6 +36,15 @@ pub(crate) enum Definition<'a> {
     Function(FunctionDefinition<'a>),
 }
 
+impl Definition<'_> {
+    pub(crate) fn is_exported(&self) -> bool {
+        match self {
+            Definition::Struct(StructDefinition { is_exported, .. }) => *is_exported,
+            Definition::Function(FunctionDefinition { is_exported, .. }) => *is_exported,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct StructDefinition<'a> {
     pub(crate) is_exported: bool,

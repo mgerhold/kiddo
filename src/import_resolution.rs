@@ -127,8 +127,36 @@ pub(crate) struct ModuleWithImports<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ModuleWithExports<'a> {
-    pub(crate) module_with_imports: &'a ModuleWithImports<'a>,
+    pub(crate) module_with_imports: ModuleWithImports<'a>,
     pub(crate) exported_definitions: &'a [Definition<'a>],
+}
+
+pub(crate) fn gather_all_exports<'a>(
+    modules_with_imports: &'a [ModuleWithImports<'a>],
+    bump_allocator: &'a Bump,
+) -> &'a [ModuleWithExports<'a>] {
+    let result: Vec<_> = modules_with_imports
+        .iter()
+        .map(|module| gather_exports(*module, bump_allocator))
+        .collect();
+    bump_allocator.alloc_slice_copy(&result)
+}
+
+pub(crate) fn gather_exports<'a>(
+    module_with_imports: ModuleWithImports<'a>,
+    bump_allocator: &'a Bump,
+) -> ModuleWithExports<'a> {
+    let exports: Vec<_> = module_with_imports
+        .module
+        .definitions
+        .iter()
+        .filter(|definition| definition.is_exported())
+        .copied()
+        .collect();
+    ModuleWithExports {
+        module_with_imports,
+        exported_definitions: bump_allocator.alloc_slice_copy(&exports),
+    }
 }
 
 pub(crate) fn resolve_all_imports<'a>(

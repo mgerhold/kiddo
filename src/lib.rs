@@ -5,7 +5,9 @@ use std::ops::Deref;
 
 use bumpalo::Bump;
 
-use crate::import_resolution::{resolve_all_imports, resolve_imports, ModuleWithImports};
+use crate::import_resolution::{
+    gather_all_exports, resolve_all_imports, resolve_imports, ModuleWithImports,
+};
 use crate::parser::errors::ErrorReport;
 use crate::parser::parse_module;
 use crate::utils::AllocPath;
@@ -54,6 +56,9 @@ pub fn main<'a>(bump_allocator: &'a Bump) -> Result<(), Box<dyn ErrorReport + 'a
     };
     let all_modules =
         resolve_all_imports(main_module, &import_directories, bump_allocator).unwrap();
+
+    let all_modules = gather_all_exports(all_modules, bump_allocator);
+
     dbg!(all_modules);
 
     Ok(())
