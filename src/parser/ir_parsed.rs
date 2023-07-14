@@ -30,8 +30,28 @@ pub(crate) enum Import<'a> {
     },
 }
 
+impl<'a> Import<'a> {
+    pub(crate) fn imported_symbol(&self) -> Option<Identifier<'a>> {
+        match self {
+            Import::Import { .. } => None,
+            Import::ImportAs { .. } => None,
+            Import::FromImport { symbol, .. } => Some(*symbol),
+            Import::FromImportAs { symbol, .. } => Some(*symbol),
+        }
+    }
+
+    pub(crate) fn what_or_where(&self) -> QualifiedName<'a> {
+        match self {
+            Import::Import { what, .. } => *what,
+            Import::ImportAs { what, .. } => *what,
+            Import::FromImport { where_, .. } => *where_,
+            Import::FromImportAs { where_, .. } => *where_,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum Definition<'a> {
+pub enum Definition<'a> {
     Struct(StructDefinition<'a>),
     Function(FunctionDefinition<'a>),
 }
@@ -43,17 +63,24 @@ impl Definition<'_> {
             Definition::Function(FunctionDefinition { is_exported, .. }) => *is_exported,
         }
     }
+
+    pub(crate) fn identifier(&self) -> Identifier {
+        match self {
+            Definition::Struct(StructDefinition { name, .. }) => *name,
+            Definition::Function(FunctionDefinition { name, .. }) => *name,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct StructDefinition<'a> {
+pub struct StructDefinition<'a> {
     pub(crate) is_exported: bool,
     pub(crate) name: Identifier<'a>,
     pub(crate) members: &'a [StructMember<'a>],
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct FunctionDefinition<'a> {
+pub struct FunctionDefinition<'a> {
     pub(crate) is_exported: bool,
     pub(crate) name: Identifier<'a>,
     pub(crate) parameters: &'a [FunctionParameter<'a>],
@@ -128,6 +155,22 @@ pub enum QualifiedName<'a> {
     Relative { tokens: &'a [Token<'a>] },
 }
 
+impl<'a> QualifiedName<'a> {
+    pub(crate) fn tokens(&self) -> &'a [Token<'a>] {
+        match self {
+            QualifiedName::Absolute { tokens } => tokens,
+            QualifiedName::Relative { tokens } => tokens,
+        }
+    }
+
+    pub(crate) fn as_string(&self) -> String {
+        self.tokens()
+            .iter()
+            .map(|token| String::from(token.lexeme()))
+            .collect()
+    }
+}
+
 impl From<&QualifiedName<'_>> for PathBuf {
     fn from(name: &QualifiedName) -> Self {
         let tokens = match name {
@@ -148,6 +191,6 @@ impl From<&QualifiedName<'_>> for PathBuf {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Identifier<'a> {
+pub struct Identifier<'a> {
     pub(crate) token: Token<'a>,
 }

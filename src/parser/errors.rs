@@ -9,10 +9,27 @@ pub(crate) fn print_error<S1: Into<String>, S2: Into<String>>(
     message: S1,
     label_message: S2,
 ) {
+    print_report(ReportKind::Error, location, message, label_message);
+}
+
+pub(crate) fn print_advice<S1: Into<String>, S2: Into<String>>(
+    location: &SourceLocation,
+    message: S1,
+    label_message: S2,
+) {
+    print_report(ReportKind::Advice, location, message, label_message);
+}
+
+fn print_report<S1: Into<String>, S2: Into<String>>(
+    report_kind: ReportKind,
+    location: &SourceLocation,
+    message: S1,
+    label_message: S2,
+) {
     let filename = location.filename();
     let filename = filename.to_string_lossy();
     let filename = filename.strip_prefix("\\\\?\\").unwrap();
-    Report::build(ReportKind::Error, filename, location.char_offset())
+    Report::build(report_kind, filename, location.char_offset())
         .with_message(message.into())
         .with_label(Label::new((filename, location.char_span())).with_message(label_message.into()))
         .finish()
