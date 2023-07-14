@@ -9,7 +9,7 @@ import list as vector; // circular import
 import ::std::containers::list; // circular import
 import ::std::containers::list as el_listo; // circular import
 
-struct DynArray {
+export struct DynArray {
     size: Usize,
     capacity: Usize,
     data: Pointer,

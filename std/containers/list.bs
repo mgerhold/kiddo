@@ -17,7 +17,7 @@ struct ListPointer {
     pointer: SomePointer,
 }
 
-struct List {
+export struct List {
     head: ListPointer,
     tail: ListPointer,
     size: Usize,
