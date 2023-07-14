@@ -26,7 +26,7 @@ impl ErrorReport for DuplicateIdentifiersError<'_> {
     }
 }
 
-pub(crate) fn validate_no_duplicate_identifiers<'a>(
+pub(crate) fn check_against_duplicate_identifier_definitions<'a>(
     modules_with_imports: &'a [ModuleWithImports<'a>],
 ) -> Result<(), DuplicateIdentifiersError<'a>> {
     for module_with_imports in modules_with_imports {
