@@ -38,10 +38,7 @@ impl ErrorReport for ImportError<'_> {
                         .last()
                         .expect("there should be at least one token")
                         .source_location,
-                    format!(
-                        "import error: '{}' not found in import paths",
-                        path_to_search.display()
-                    ),
+                    format!("'{}' not found in import paths", path_to_search.display()),
                     "unable to resolve this import",
                 );
             }
@@ -54,7 +51,7 @@ impl ErrorReport for ImportError<'_> {
                 print_error(
                     &symbol_token.token.source_location,
                     format!(
-                        "import error: module '{}' (in '{}') does not export symbol '{}'",
+                        "module '{}' (in '{}') does not export symbol '{}'",
                         import_path.as_string(),
                         imported_module.canonical_path.display(),
                         symbol_token.token.lexeme()

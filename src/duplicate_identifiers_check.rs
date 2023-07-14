@@ -16,12 +16,12 @@ impl ErrorReport for DuplicateIdentifiersError<'_> {
                 "cannot re-define symbol '{}'",
                 self.definition.identifier().token.lexeme()
             ),
-            "see this definition",
+            "re-defined here",
         );
         print_note(
             &self.previous_definition.identifier().token.source_location,
             "previous definition occurred here",
-            "see this definition",
+            "already defined here",
         );
     }
 }
