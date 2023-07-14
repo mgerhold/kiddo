@@ -31,14 +31,13 @@ pub(crate) fn check_against_duplicate_identifier_definitions<'a>(
 ) -> Result<(), DuplicateIdentifiersError<'a>> {
     for module_with_imports in modules_with_imports {
         for (i, current_definition) in module_with_imports.module.definitions.iter().enumerate() {
-            for j in 0..i {
-                let definition = module_with_imports.module.definitions[j];
+            for definition in &module_with_imports.module.definitions[..i] {
                 if current_definition.identifier().token.lexeme()
                     == definition.identifier().token.lexeme()
                 {
                     return Err(DuplicateIdentifiersError {
                         definition: *current_definition,
-                        previous_definition: definition,
+                        previous_definition: *definition,
                     });
                 }
             }
