@@ -4,6 +4,7 @@ from std::terminal import print;
 from std::terminal import print as p;
 import std::containers::dyn_array as darray;
 import std::containers::list as list;
+import std::containers::list as l;
 import ::std::containers::list;
 
 export struct S1 {
@@ -34,6 +35,7 @@ struct S6 {
 export function f(this: ->S, n: U32) ~> Nothing {
     //this!.number = this!.number + n;
 }
+
 
 function no_explicit_return_type(this: S, array: [U32; 15]) {
     15 + 2 * (3 + 17) + 7 + {
