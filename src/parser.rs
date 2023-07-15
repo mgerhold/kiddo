@@ -612,73 +612,19 @@ impl<'a> ParserState<'a> {
         QualifiedTypeName:
             (('::')? (tokens+=LOWERCASE_IDENTIFIER '::')* )? tokens+=UPPERCASE_IDENTIFIER
          */
-        let rest_of_tokens = &self.tokens[self.current_index..];
-
-        let is_absolute = match self.current() {
-            Token {
-                type_: TokenType::ColonColon,
-                ..
-            } => true,
-            Token {
-                type_: TokenType::LowercaseIdentifier,
-                ..
-            }
-            | Token {
-                type_: TokenType::UppercaseIdentifier,
-                ..
-            } => {
-                self.advance(1); // consume first identifier
-                false
-            }
-            token => {
-                return Err(ParserError::TokenTypeMismatch {
-                    expected: &[
-                        TokenType::ColonColon,
-                        TokenType::LowercaseIdentifier,
-                        TokenType::UppercaseIdentifier,
-                    ],
-                    actual: token,
+        match self.qualified_name()? {
+            QualifiedName::QualifiedTypeName(qualified_type_name) => Ok(qualified_type_name),
+            qualified_name => {
+                assert_eq!(
+                    qualified_name.tokens().last().unwrap().type_,
+                    TokenType::LowercaseIdentifier
+                );
+                Err(ParserError::TokenTypeMismatch {
+                    expected: &[TokenType::UppercaseIdentifier],
+                    actual: *qualified_name.tokens().last().unwrap(),
                 })
             }
-        };
-
-        if rest_of_tokens.first().unwrap().type_ == TokenType::UppercaseIdentifier {
-            return Ok(QualifiedTypeName::Relative {
-                tokens: &rest_of_tokens[..1],
-            });
         }
-
-        let mut num_tokens = (!is_absolute).into();
-
-        while self.consume(TokenType::ColonColon).is_some() {
-            num_tokens += 1; // for '::'
-            let current_token = self.expect_one_of(&[
-                TokenType::LowercaseIdentifier,
-                TokenType::UppercaseIdentifier,
-            ])?;
-            num_tokens += 1; // for the identifier
-            if current_token.type_ == TokenType::UppercaseIdentifier {
-                break;
-            }
-        }
-
-        let tokens = &rest_of_tokens[..num_tokens];
-        let last_token = tokens.last().unwrap();
-        let is_type_name = last_token.type_ == TokenType::UppercaseIdentifier;
-
-        if !is_type_name {
-            return Err(ParserError::TokenTypeMismatch {
-                expected: &[TokenType::UppercaseIdentifier],
-                actual: *last_token,
-            });
-        }
-
-        assert!(is_type_name);
-
-        Ok(match is_absolute {
-            true => QualifiedTypeName::Absolute { tokens },
-            false => QualifiedTypeName::Relative { tokens },
-        })
     }
 
     fn qualified_non_type_name(&mut self) -> Result<QualifiedNonTypeName<'a>, ParserError<'a>> {
@@ -686,42 +632,21 @@ impl<'a> ParserState<'a> {
         QualifiedNonTypeName:
             (('::')? (tokens+=LOWERCASE_IDENTIFIER '::')* )? tokens+=LOWERCASE_IDENTIFIER
          */
-        let rest_of_tokens = &self.tokens[self.current_index..];
-
-        let is_absolute = match self.current() {
-            Token {
-                type_: TokenType::ColonColon,
-                ..
-            } => true,
-            Token {
-                type_: TokenType::LowercaseIdentifier,
-                ..
-            } => {
-                self.advance(1); // consume first identifier
-                false
+        match self.qualified_name()? {
+            QualifiedName::QualifiedNonTypeName(qualified_non_type_name) => {
+                Ok(qualified_non_type_name)
             }
-            token => {
-                return Err(ParserError::TokenTypeMismatch {
-                    expected: &[TokenType::ColonColon, TokenType::LowercaseIdentifier],
-                    actual: token,
+            qualified_name => {
+                assert_eq!(
+                    qualified_name.tokens().last().unwrap().type_,
+                    TokenType::UppercaseIdentifier
+                );
+                Err(ParserError::TokenTypeMismatch {
+                    expected: &[TokenType::LowercaseIdentifier],
+                    actual: *qualified_name.tokens().last().unwrap(),
                 })
             }
-        };
-
-        let mut num_tokens = (!is_absolute).into();
-
-        while self.consume(TokenType::ColonColon).is_some() {
-            num_tokens += 1; // for '::'
-            self.expect_one_of(&[TokenType::LowercaseIdentifier])?;
-            num_tokens += 1; // for the identifier
         }
-
-        let tokens = &rest_of_tokens[..num_tokens];
-
-        Ok(match is_absolute {
-            true => QualifiedNonTypeName::Absolute { tokens },
-            false => QualifiedNonTypeName::Relative { tokens },
-        })
     }
 
     fn qualified_name(&mut self) -> Result<QualifiedName<'a>, ParserError<'a>> {
