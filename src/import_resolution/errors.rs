@@ -51,6 +51,12 @@ pub enum ImportError<'a> {
         import: ResolvedImport<'a>,
         previous_import: ResolvedImport<'a>,
     },
+    UnableToCanonicalize {
+        path: &'a Path,
+    },
+    FileNotFound {
+        path: &'a Path,
+    },
 }
 
 impl ErrorReport for ImportError<'_> {
@@ -136,6 +142,12 @@ impl ErrorReport for ImportError<'_> {
                     "previously imported module prevents import",
                     "module imported here",
                 );
+            }
+            ImportError::UnableToCanonicalize { path } => {
+                eprintln!("error: unable to canonicalize path '{}'", path.display());
+            }
+            ImportError::FileNotFound { path } => {
+                eprintln!("error: file not found: '{}'", path.display());
             }
         }
     }

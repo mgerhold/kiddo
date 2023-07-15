@@ -1,70 +1,42 @@
 #![allow(dead_code)]
 #![feature(os_str_bytes)]
 
-use std::path::PathBuf;
-
 use bumpalo::Bump;
 use clap::Parser;
 
-use crate::import_resolution::errors::ImportError;
+use crate::command_line_arguments::CommandLineArguments;
+use crate::helpers::{gather_import_directories, get_canonical_path_to_main_module};
 use crate::import_resolution::{find_imports, perform_import_resolution, ModuleWithImports};
 use crate::parser::errors::ErrorReport;
 use crate::parser::parse_module;
 use crate::utils::AllocPath;
 
+mod command_line_arguments;
 mod constants;
+mod helpers;
 mod import_resolution;
 mod lexer;
 mod parser;
 mod token;
 mod utils;
 
-#[derive(Parser)]
-#[command(author, version, about, long_about = None)]
-struct CommandLineArguments {
-    #[arg(short, long)]
-    source_file: PathBuf,
-
-    #[clap(short, long, num_args = 0..)]
-    import_paths: Vec<PathBuf>,
-}
-
 pub fn main<'a>(bump_allocator: &'a Bump) -> Result<(), Box<dyn ErrorReport + 'a>> {
-    let command_line_arguments = CommandLineArguments::parse();
+    // parse command line arguments
+    let command_line_args = CommandLineArguments::parse();
 
-    let main_module_filename = bump_allocator.alloc_path(command_line_arguments.source_file);
-    let main_module_canonical_path = bump_allocator.alloc_path(
-        main_module_filename
-            .canonicalize()
-            .expect("unable to canonicalize path"),
-    );
-
+    let main_module_canonical_path =
+        get_canonical_path_to_main_module(&command_line_args, bump_allocator)?;
     let main_module_directory = bump_allocator.alloc_path(
         main_module_canonical_path
             .parent()
-            .expect("unable to get parent directory"),
+            .expect("the main module is a file and therefore must reside in a directory"),
     );
 
-    let import_directories: Vec<_> = std::iter::once(main_module_directory)
-        .chain(
-            command_line_arguments
-                .import_paths
-                .iter()
-                .map(|path| bump_allocator.alloc_path(path)),
-        )
-        .collect();
-    let import_directories = bump_allocator.alloc_slice_copy(&import_directories);
-
-    for path in import_directories.iter() {
-        if !path.exists() || !path.is_dir() {
-            return Err(Box::new(ImportError::ImportPathNotFound {
-                import_path: path,
-            }));
-        }
-    }
+    let import_directories =
+        gather_import_directories(main_module_directory, &command_line_args, bump_allocator)?;
 
     let main_module_source =
-        bump_allocator.alloc_str(&std::fs::read_to_string(main_module_filename).unwrap());
+        bump_allocator.alloc_str(&std::fs::read_to_string(main_module_canonical_path).unwrap());
 
     let main_module = parse_module(
         main_module_canonical_path,
@@ -72,6 +44,7 @@ pub fn main<'a>(bump_allocator: &'a Bump) -> Result<(), Box<dyn ErrorReport + 'a
         bump_allocator,
     )?;
 
+    // get imports of main module
     let main_module_imports = find_imports(
         main_module_directory,
         import_directories,
@@ -84,7 +57,6 @@ pub fn main<'a>(bump_allocator: &'a Bump) -> Result<(), Box<dyn ErrorReport + 'a
         imports: main_module_imports,
     };
 
-    let all_modules = perform_input_resolution(main_module, import_directories, bump_allocator)?;
     let all_modules = perform_import_resolution(main_module, import_directories, bump_allocator)?;
 
     dbg!(all_modules);
