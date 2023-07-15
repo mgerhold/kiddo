@@ -1,0 +1,2 @@
+// [[intrinsic(never), author(coder2k), stdlib]]
+export struct Never {}

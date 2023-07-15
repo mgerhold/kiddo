@@ -120,7 +120,7 @@ impl<'a> SourceLocation<'a> {
 }
 
 impl Display for SourceLocation<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "{}:{}:{}",
@@ -184,7 +184,8 @@ pub enum TokenType {
     Yield,
     Export,
 
-    Identifier,
+    LowercaseIdentifier,
+    UppercaseIdentifier,
 
     Integer,
     Char,
@@ -205,7 +206,7 @@ impl<'a> Token<'a> {
 }
 
 impl Display for Token<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
             "'{}' ({:?}, {}:{}:{}, width {})",

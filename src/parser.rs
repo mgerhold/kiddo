@@ -6,7 +6,8 @@ use crate::lexer::tokenize;
 use crate::parser::errors::{ErrorReport, ParserError};
 use crate::parser::ir_parsed::{
     Block, DataType, Definition, Expression, FunctionDefinition, FunctionParameter, Identifier,
-    Import, Module, Mutability, QualifiedName, Statement, StructDefinition, StructMember,
+    Import, Module, Mutability, NonTypeIdentifier, QualifiedName, QualifiedNonTypeName,
+    QualifiedTypeName, Statement, StructDefinition, StructMember, TypeIdentifier,
 };
 use crate::token::{Token, TokenType};
 use crate::utils::parse_unsigned_int;
@@ -47,6 +48,22 @@ impl<'a> ParserState<'a> {
                 expected: self.bump_allocator.alloc([type_]),
                 actual: current_token,
             })
+    }
+
+    fn expect_one_of(
+        &mut self,
+        expected: &'static [TokenType],
+    ) -> Result<Token<'a>, ParserError<'a>> {
+        let current_token = self.current();
+        if expected.iter().any(|type_| current_token.type_ == *type_) {
+            self.advance(1);
+            Ok(current_token)
+        } else {
+            Err(ParserError::TokenTypeMismatch {
+                expected,
+                actual: current_token,
+            })
+        }
     }
 
     fn consume(&mut self, type_: TokenType) -> Option<Token<'a>> {
@@ -162,11 +179,13 @@ impl<'a> ParserState<'a> {
 
         loop {
             let is_exported = self.consume(TokenType::Export).is_some();
-            let definition = self.definition(is_exported);
-            match (is_exported, definition) {
-                (_, Ok(definition)) => result.push(definition),
-                (true, Err(error)) => return Err(error),
-                (false, Err(_)) => break,
+
+            let is_valid_definition_start =
+                [TokenType::Struct, TokenType::Function].contains(&self.current().type_);
+
+            match (is_exported, is_valid_definition_start) {
+                (false, false) => break,
+                _ => result.push(self.definition(is_exported)?),
             }
         }
 
@@ -190,7 +209,7 @@ impl<'a> ParserState<'a> {
     ) -> Result<StructDefinition<'a>, ParserError<'a>> {
         /*
         StructDefinition:
-            'struct' (name=Identifier) '{'
+            'struct' (name=TypeIdentifier) '{'
                 (members=StructMembers)
             '}'
 
@@ -202,7 +221,7 @@ impl<'a> ParserState<'a> {
             )?
 
         StructMember:
-            (name=Identifier) ':' (type=DataType)
+            (name=NonTypeIdentifier) ':' (type=DataType)
         */
         assert!(matches!(
             self.current(),
@@ -213,17 +232,15 @@ impl<'a> ParserState<'a> {
         ));
 
         self.advance(1); // consume 'struct'
-        let name = self.identifier()?;
+        let name = self.type_identifier()?;
         self.expect(TokenType::LeftCurlyBracket)?;
         let mut members = Vec::new();
 
-        while let Some(identifier_token) = self.consume(TokenType::Identifier) {
+        while let Some(identifier_token) = self.consume(TokenType::LowercaseIdentifier) {
             self.expect(TokenType::Colon)?;
             let type_ = self.data_type()?;
             members.push(StructMember {
-                name: Identifier {
-                    token: identifier_token,
-                },
+                name: Identifier::NonTypeIdentifier(NonTypeIdentifier(identifier_token)),
                 type_,
             });
             let comma_present = self.consume(TokenType::Comma).is_some();
@@ -255,7 +272,7 @@ impl<'a> ParserState<'a> {
     ) -> Result<FunctionDefinition<'a>, ParserError<'a>> {
         /*
         FunctionDefinition:
-            'function' (name=Identifier) '(' (parameters=ParameterList) ')' ('~>' (return_type=DataType))? '{'
+            'function' (name=NonTypeIdentifier) '(' (parameters=ParameterList) ')' ('~>' (return_type=DataType))? '{'
                 (statements=Statements)?
             '}'
          */
@@ -268,7 +285,7 @@ impl<'a> ParserState<'a> {
         ));
 
         self.advance(1); // consume 'function'
-        let name = self.identifier()?;
+        let name = self.non_type_identifier()?;
         self.expect(TokenType::LeftParenthesis)?;
         let parameters = self.parameter_list()?;
         self.expect(TokenType::RightParenthesis)?;
@@ -301,7 +318,7 @@ impl<'a> ParserState<'a> {
          */
         let mut parameters = Vec::new();
         while let Token {
-            type_: TokenType::Identifier,
+            type_: TokenType::LowercaseIdentifier,
             ..
         } = self.current()
         {
@@ -316,7 +333,7 @@ impl<'a> ParserState<'a> {
     fn function_parameter(&mut self) -> Result<FunctionParameter<'a>, ParserError<'a>> {
         /*
         FunctionParameter:
-            (name=Identifier) ':' (type=DataType)
+            (name=NonTypeIdentifier) ':' (type=DataType)
          */
         let name = self.identifier()?;
         self.expect(TokenType::Colon)?;
@@ -452,7 +469,8 @@ impl<'a> ParserState<'a> {
         let is_valid_type_start = |token: Token| {
             [
                 TokenType::ColonColon,
-                TokenType::Identifier,
+                TokenType::LowercaseIdentifier,
+                TokenType::UppercaseIdentifier,
                 TokenType::LeftSquareBracket,
                 TokenType::Arrow,
                 TokenType::CapitalizedFunction,
@@ -474,7 +492,7 @@ impl<'a> ParserState<'a> {
     fn data_type(&mut self) -> Result<DataType<'a>, ParserError<'a>> {
         /*
         DataType:
-            (name=QualifiedName)
+            (name=QualifiedTypeName)
             | ('[' contained_type=DataType ';' size=Integer ']')
             | ('->' mutability=Mutability pointee_type=DataType)
             | ('Function' '(' parameter_types=TypeList ')' '~>' return_type=DataType)
@@ -529,20 +547,46 @@ impl<'a> ParserState<'a> {
             }
             _ => {
                 // named type
-                let name = self.qualified_name()?;
+                let name = self.qualified_type_name()?;
                 Ok(DataType::Named { name })
             }
         }
     }
 
+    fn type_identifier(&mut self) -> Result<TypeIdentifier<'a>, ParserError<'a>> {
+        /*
+        TypeIdentifier:
+            token=UPPERCASE_IDENTIFIER
+         */
+        Ok(TypeIdentifier(self.expect(TokenType::UppercaseIdentifier)?))
+    }
+
+    fn non_type_identifier(&mut self) -> Result<NonTypeIdentifier<'a>, ParserError<'a>> {
+        /*
+        TypeIdentifier:
+            token=LOWERCASE_IDENTIFIER
+         */
+        Ok(NonTypeIdentifier(
+            self.expect(TokenType::LowercaseIdentifier)?,
+        ))
+    }
+
     fn identifier(&mut self) -> Result<Identifier<'a>, ParserError<'a>> {
         /*
         Identifier:
-            token=IDENTIFIER
+            token=(LOWERCASE_IDENTIFIER | UPPERCASE_IDENTIFIER)
          */
-        Ok(Identifier {
-            token: self.expect(TokenType::Identifier)?,
-        })
+        let token = self.expect_one_of(&[
+            TokenType::LowercaseIdentifier,
+            TokenType::UppercaseIdentifier,
+        ])?;
+        match token.type_ {
+            TokenType::LowercaseIdentifier => {
+                Ok(Identifier::NonTypeIdentifier(NonTypeIdentifier(token)))
+            }
+            TokenType::UppercaseIdentifier => Ok(Identifier::TypeIdentifier(TypeIdentifier(token))),
+            _ => unreachable!(),
+        }
     }
 
     fn consume_until_one_of(&mut self, types: &'static [TokenType]) -> &'a [Token<'a>] {
@@ -563,10 +607,10 @@ impl<'a> ParserState<'a> {
         consumable_tokens
     }
 
-    fn qualified_name(&mut self) -> Result<QualifiedName<'a>, ParserError<'a>> {
+    fn qualified_type_name(&mut self) -> Result<QualifiedTypeName<'a>, ParserError<'a>> {
         /*
-        QualifiedName:
-            ('::')? tokens+=Identifier ('::' tokens+=Identifier)*
+        QualifiedTypeName:
+            (('::')? (tokens+=LOWERCASE_IDENTIFIER '::')* )? tokens+=UPPERCASE_IDENTIFIER
          */
         let rest_of_tokens = &self.tokens[self.current_index..];
 
@@ -576,7 +620,11 @@ impl<'a> ParserState<'a> {
                 ..
             } => true,
             Token {
-                type_: TokenType::Identifier,
+                type_: TokenType::LowercaseIdentifier,
+                ..
+            }
+            | Token {
+                type_: TokenType::UppercaseIdentifier,
                 ..
             } => {
                 self.advance(1); // consume first identifier
@@ -584,7 +632,77 @@ impl<'a> ParserState<'a> {
             }
             token => {
                 return Err(ParserError::TokenTypeMismatch {
-                    expected: &[TokenType::ColonColon, TokenType::Identifier],
+                    expected: &[
+                        TokenType::ColonColon,
+                        TokenType::LowercaseIdentifier,
+                        TokenType::UppercaseIdentifier,
+                    ],
+                    actual: token,
+                })
+            }
+        };
+
+        if rest_of_tokens.first().unwrap().type_ == TokenType::UppercaseIdentifier {
+            return Ok(QualifiedTypeName::Relative {
+                tokens: &rest_of_tokens[..1],
+            });
+        }
+
+        let mut num_tokens = (!is_absolute).into();
+
+        while self.consume(TokenType::ColonColon).is_some() {
+            num_tokens += 1; // for '::'
+            let current_token = self.expect_one_of(&[
+                TokenType::LowercaseIdentifier,
+                TokenType::UppercaseIdentifier,
+            ])?;
+            num_tokens += 1; // for the identifier
+            if current_token.type_ == TokenType::UppercaseIdentifier {
+                break;
+            }
+        }
+
+        let tokens = &rest_of_tokens[..num_tokens];
+        let last_token = tokens.last().unwrap();
+        let is_type_name = last_token.type_ == TokenType::UppercaseIdentifier;
+
+        if !is_type_name {
+            return Err(ParserError::TokenTypeMismatch {
+                expected: &[TokenType::UppercaseIdentifier],
+                actual: *last_token,
+            });
+        }
+
+        assert!(is_type_name);
+
+        Ok(match is_absolute {
+            true => QualifiedTypeName::Absolute { tokens },
+            false => QualifiedTypeName::Relative { tokens },
+        })
+    }
+
+    fn qualified_non_type_name(&mut self) -> Result<QualifiedNonTypeName<'a>, ParserError<'a>> {
+        /*
+        QualifiedNonTypeName:
+            (('::')? (tokens+=LOWERCASE_IDENTIFIER '::')* )? tokens+=LOWERCASE_IDENTIFIER
+         */
+        let rest_of_tokens = &self.tokens[self.current_index..];
+
+        let is_absolute = match self.current() {
+            Token {
+                type_: TokenType::ColonColon,
+                ..
+            } => true,
+            Token {
+                type_: TokenType::LowercaseIdentifier,
+                ..
+            } => {
+                self.advance(1); // consume first identifier
+                false
+            }
+            token => {
+                return Err(ParserError::TokenTypeMismatch {
+                    expected: &[TokenType::ColonColon, TokenType::LowercaseIdentifier],
                     actual: token,
                 })
             }
@@ -594,17 +712,92 @@ impl<'a> ParserState<'a> {
 
         while self.consume(TokenType::ColonColon).is_some() {
             num_tokens += 1; // for '::'
-            self.expect(TokenType::Identifier)?;
+            self.expect_one_of(&[TokenType::LowercaseIdentifier])?;
             num_tokens += 1; // for the identifier
         }
 
+        let tokens = &rest_of_tokens[..num_tokens];
+
         Ok(match is_absolute {
-            true => QualifiedName::Absolute {
-                tokens: &rest_of_tokens[..num_tokens],
-            },
-            false => QualifiedName::Relative {
-                tokens: &rest_of_tokens[..num_tokens],
-            },
+            true => QualifiedNonTypeName::Absolute { tokens },
+            false => QualifiedNonTypeName::Relative { tokens },
+        })
+    }
+
+    fn qualified_name(&mut self) -> Result<QualifiedName<'a>, ParserError<'a>> {
+        /*
+        QualifiedName:
+            (('::')? (tokens+=LOWERCASE_IDENTIFIER '::')* )? tokens+=Identifier
+         */
+        let rest_of_tokens = &self.tokens[self.current_index..];
+
+        let is_absolute = match self.current() {
+            Token {
+                type_: TokenType::ColonColon,
+                ..
+            } => true,
+            Token {
+                type_: TokenType::LowercaseIdentifier,
+                ..
+            }
+            | Token {
+                type_: TokenType::UppercaseIdentifier,
+                ..
+            } => {
+                self.advance(1); // consume first identifier
+                false
+            }
+            token => {
+                return Err(ParserError::TokenTypeMismatch {
+                    expected: &[
+                        TokenType::ColonColon,
+                        TokenType::LowercaseIdentifier,
+                        TokenType::UppercaseIdentifier,
+                    ],
+                    actual: token,
+                })
+            }
+        };
+
+        if rest_of_tokens.first().unwrap().type_ == TokenType::UppercaseIdentifier {
+            return Ok(QualifiedName::QualifiedTypeName(
+                QualifiedTypeName::Relative {
+                    tokens: &rest_of_tokens[..1],
+                },
+            ));
+        }
+
+        let mut num_tokens = (!is_absolute).into();
+
+        while self.consume(TokenType::ColonColon).is_some() {
+            num_tokens += 1; // for '::'
+            let current_token = self.expect_one_of(&[
+                TokenType::LowercaseIdentifier,
+                TokenType::UppercaseIdentifier,
+            ])?;
+            num_tokens += 1; // for the identifier
+            if current_token.type_ == TokenType::UppercaseIdentifier {
+                break;
+            }
+        }
+
+        let tokens = &rest_of_tokens[..num_tokens];
+
+        let is_type_name = tokens.last().unwrap().type_ == TokenType::UppercaseIdentifier;
+
+        Ok(match (is_absolute, is_type_name) {
+            (true, true) => {
+                QualifiedName::QualifiedTypeName(QualifiedTypeName::Absolute { tokens })
+            }
+            (true, false) => {
+                QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Absolute { tokens })
+            }
+            (false, true) => {
+                QualifiedName::QualifiedTypeName(QualifiedTypeName::Relative { tokens })
+            }
+            (false, false) => {
+                QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Relative { tokens })
+            }
         })
     }
 

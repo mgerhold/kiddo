@@ -395,7 +395,10 @@ pub(crate) fn tokenize<'a>(
                 "nothing" => TokenType::Nothing,
                 "yield" => TokenType::Yield,
                 "export" => TokenType::Export,
-                _ => TokenType::Identifier,
+                _ if lexeme.chars().next().unwrap().is_uppercase() => {
+                    TokenType::UppercaseIdentifier
+                }
+                _ => TokenType::LowercaseIdentifier,
             };
 
             tokens.push(Token {

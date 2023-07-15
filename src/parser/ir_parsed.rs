@@ -51,7 +51,7 @@ impl<'a> QualifiedNameOrIdentifier<'a> {
             QualifiedNameOrIdentifier::QualifiedName(qualified_name) => {
                 qualified_name.source_location()
             }
-            QualifiedNameOrIdentifier::Identifier(identifier) => identifier.token.source_location,
+            QualifiedNameOrIdentifier::Identifier(identifier) => identifier.token().source_location,
         }
     }
 }
@@ -130,8 +130,10 @@ impl Definition<'_> {
 
     pub(crate) fn identifier(&self) -> Identifier {
         match self {
-            Definition::Struct(StructDefinition { name, .. }) => *name,
-            Definition::Function(FunctionDefinition { name, .. }) => *name,
+            Definition::Struct(StructDefinition { name, .. }) => Identifier::TypeIdentifier(*name),
+            Definition::Function(FunctionDefinition { name, .. }) => {
+                Identifier::NonTypeIdentifier(*name)
+            }
         }
     }
 }
@@ -139,14 +141,14 @@ impl Definition<'_> {
 #[derive(Debug, Clone, Copy)]
 pub struct StructDefinition<'a> {
     pub(crate) is_exported: bool,
-    pub(crate) name: Identifier<'a>,
+    pub(crate) name: TypeIdentifier<'a>,
     pub(crate) members: &'a [StructMember<'a>],
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct FunctionDefinition<'a> {
     pub(crate) is_exported: bool,
-    pub(crate) name: Identifier<'a>,
+    pub(crate) name: NonTypeIdentifier<'a>,
     pub(crate) parameters: &'a [FunctionParameter<'a>],
     pub(crate) return_type: Option<DataType<'a>>,
     pub(crate) body: Block<'a>,
@@ -167,7 +169,7 @@ pub(crate) enum Mutability {
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum DataType<'a> {
     Named {
-        name: QualifiedName<'a>,
+        name: QualifiedTypeName<'a>,
     },
     Pointer {
         mutability: Mutability,
@@ -214,9 +216,39 @@ pub(crate) enum Statement<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub enum QualifiedName<'a> {
+pub enum QualifiedTypeName<'a> {
     Absolute { tokens: &'a [Token<'a>] },
     Relative { tokens: &'a [Token<'a>] },
+}
+
+impl<'a> QualifiedTypeName<'a> {
+    fn tokens(&self) -> &'a [Token<'a>] {
+        match self {
+            QualifiedTypeName::Absolute { tokens } => tokens,
+            QualifiedTypeName::Relative { tokens } => tokens,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum QualifiedNonTypeName<'a> {
+    Absolute { tokens: &'a [Token<'a>] },
+    Relative { tokens: &'a [Token<'a>] },
+}
+
+impl<'a> QualifiedNonTypeName<'a> {
+    fn tokens(&self) -> &'a [Token<'a>] {
+        match self {
+            QualifiedNonTypeName::Absolute { tokens } => tokens,
+            QualifiedNonTypeName::Relative { tokens } => tokens,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum QualifiedName<'a> {
+    QualifiedTypeName(QualifiedTypeName<'a>),
+    QualifiedNonTypeName(QualifiedNonTypeName<'a>),
 }
 
 impl PartialEq for QualifiedName<'_> {
@@ -236,8 +268,8 @@ impl PartialEq<Identifier<'_>> for QualifiedName<'_> {
         match self.tokens() {
             [Token {
                 source_location,
-                type_: TokenType::Identifier,
-            }] => source_location.lexeme() == other.token.lexeme(),
+                type_: TokenType::LowercaseIdentifier,
+            }] => source_location.lexeme() == other.token().lexeme(),
             _ => false,
         }
     }
@@ -252,10 +284,21 @@ impl PartialEq<QualifiedName<'_>> for Identifier<'_> {
 impl Eq for QualifiedName<'_> {}
 
 impl<'a> QualifiedName<'a> {
+    fn is_absolute(&self) -> bool {
+        match self {
+            QualifiedName::QualifiedTypeName(QualifiedTypeName::Absolute { .. })
+            | QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Absolute { .. }) => true,
+            QualifiedName::QualifiedTypeName(QualifiedTypeName::Relative { .. })
+            | QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Relative { .. }) => false,
+        }
+    }
+
     pub(crate) fn tokens(&self) -> &'a [Token<'a>] {
         match self {
-            QualifiedName::Absolute { tokens } => tokens,
-            QualifiedName::Relative { tokens } => tokens,
+            QualifiedName::QualifiedTypeName(qualified_type_name) => qualified_type_name.tokens(),
+            QualifiedName::QualifiedNonTypeName(qualified_non_type_name) => {
+                qualified_non_type_name.tokens()
+            }
         }
     }
 
@@ -289,12 +332,10 @@ impl<'a> QualifiedName<'a> {
 
 impl From<&QualifiedName<'_>> for PathBuf {
     fn from(name: &QualifiedName) -> Self {
-        let tokens = match name {
-            QualifiedName::Absolute { tokens } => {
-                assert_eq!(tokens[0].type_, TokenType::ColonColon);
-                &tokens[1..]
-            }
-            QualifiedName::Relative { tokens } => tokens,
+        let tokens = if name.is_absolute() {
+            &name.tokens()[1..]
+        } else {
+            name.tokens()
         };
         assert!(!tokens.is_empty());
         let path: PathBuf = tokens
@@ -307,20 +348,34 @@ impl From<&QualifiedName<'_>> for PathBuf {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct Identifier<'a> {
-    pub(crate) token: Token<'a>,
+pub struct TypeIdentifier<'a>(pub Token<'a>);
+
+#[derive(Debug, Clone, Copy)]
+pub struct NonTypeIdentifier<'a>(pub Token<'a>);
+
+#[derive(Debug, Clone, Copy)]
+pub enum Identifier<'a> {
+    TypeIdentifier(TypeIdentifier<'a>),
+    NonTypeIdentifier(NonTypeIdentifier<'a>),
+}
+
+impl<'a> Identifier<'a> {
+    pub(crate) fn token(self) -> Token<'a> {
+        match self {
+            Identifier::TypeIdentifier(type_identifier) => type_identifier.0,
+            Identifier::NonTypeIdentifier(non_type_identifier) => non_type_identifier.0,
+        }
+    }
+
+    pub(crate) fn as_string(&self) -> String {
+        self.token().lexeme().to_string()
+    }
 }
 
 impl PartialEq for Identifier<'_> {
     fn eq(&self, other: &Self) -> bool {
-        self.token.lexeme() == other.token.lexeme()
+        self.token().lexeme() == other.token().lexeme()
     }
 }
 
 impl Eq for Identifier<'_> {}
-
-impl Identifier<'_> {
-    pub(crate) fn as_string(&self) -> String {
-        self.token.lexeme().to_string()
-    }
-}

@@ -13,15 +13,19 @@ pub struct DuplicateIdentifiersError<'a> {
 impl ErrorReport for DuplicateIdentifiersError<'_> {
     fn print_report(&self) {
         print_error(
-            &self.definition.identifier().token.source_location,
+            &self.definition.identifier().token().source_location,
             format!(
                 "cannot re-define symbol '{}'",
-                self.definition.identifier().token.lexeme()
+                self.definition.identifier().token().lexeme()
             ),
             "re-defined here",
         );
         print_note(
-            &self.previous_definition.identifier().token.source_location,
+            &self
+                .previous_definition
+                .identifier()
+                .token()
+                .source_location,
             "previous definition occurred here",
             "already defined here",
         );
@@ -89,18 +93,18 @@ impl ErrorReport for ImportError<'_> {
                 non_exported_definition,
             } => {
                 print_error(
-                    &symbol_token.token.source_location,
+                    &symbol_token.token().source_location,
                     format!(
                         "module '{}' (in '{}') does not export symbol '{}'",
                         import_path.as_string(),
                         imported_module.canonical_path.display(),
-                        symbol_token.token.lexeme()
+                        symbol_token.token().lexeme()
                     ),
                     "symbol not found",
                 );
                 if let Some(non_exported_definition) = non_exported_definition {
                     print_note(
-                        &non_exported_definition.identifier().token.source_location,
+                        &non_exported_definition.identifier().token().source_location,
                         "there is a definition with the requested name that has not been exported",
                         "did you forget to export this definition?",
                     );
@@ -111,14 +115,14 @@ impl ErrorReport for ImportError<'_> {
                 local_definition_with_same_identifier,
             } => {
                 print_error(
-                    &import.import.as_what().expect("this error can only occur when importing as a name").token.source_location,
-                    format!("imported definition '{}' clashes with module-local definition with the same name", import.import.as_what().unwrap().token.lexeme()),
+                    &import.import.as_what().expect("this error can only occur when importing as a name").token().source_location,
+                    format!("imported definition '{}' clashes with module-local definition with the same name", import.import.as_what().unwrap().token().lexeme()),
                     "symbol imported here",
                 );
                 print_note(
                     &local_definition_with_same_identifier
                         .identifier()
-                        .token
+                        .token()
                         .source_location,
                     "module-local definition with the same name prevents import",
                     "symbol defined here",

@@ -6,6 +6,7 @@ import std::containers::dyn_array as darray;
 import std::containers::list as list;
 import std::containers::list as l;
 import ::std::containers::list;
+from ::std::intrinsics import Never;
 
 export struct S1 {
     number: U32,
@@ -29,11 +30,15 @@ struct S5 {
 }
 
 struct S6 {
-    list: ::std::containers::list,
+    list: ::std::containers::list::List,
 }
 
 export function f(this: ->S, n: U32) ~> Nothing {
     //this!.number = this!.number + n;
+}
+
+function never_returns() ~> Never {
+    // loop { }
 }
 
 

@@ -73,22 +73,45 @@ pub enum ParserError<'a> {
 impl ErrorReport for ParserError<'_> {
     fn print_report(&self) {
         match self {
-            ParserError::TokenTypeMismatch { expected, actual } => {
-                let str_expected: Vec<String> = expected
-                    .iter()
-                    .map(|token| format!("'{token:?}'"))
-                    .collect();
+            ParserError::TokenTypeMismatch { expected, actual } => match (expected, actual.type_) {
+                ([TokenType::UppercaseIdentifier], TokenType::LowercaseIdentifier) => {
+                    print_error(
+                        &actual.source_location,
+                        "type identifier expected, got non-type identifier instead",
+                        "this identifier must start with an uppercase character",
+                    );
+                }
+                ([TokenType::LowercaseIdentifier], TokenType::UppercaseIdentifier) => {
+                    print_error(
+                        &actual.source_location,
+                        "non-type identifier expected, got type-identifier instead",
+                        "this identifier must start with a lowercase character",
+                    );
+                }
+                ([TokenType::EndOfInput], _) => {
+                    print_error(
+                        &actual.source_location,
+                        format!("unexpected token type '{:?}'", actual.type_),
+                        "unexpected token encountered here",
+                    );
+                }
+                _ => {
+                    let str_expected: Vec<String> = expected
+                        .iter()
+                        .map(|token| format!("'{token:?}'"))
+                        .collect();
 
-                let joined = str_expected.join(" or ");
-                print_error(
-                    &actual.source_location,
-                    format!(
-                        "unexpected token type '{:?}' (expected {joined})",
-                        actual.type_
-                    ),
-                    "unexpected token encountered here",
-                );
-            }
+                    let joined = str_expected.join(" or ");
+                    print_error(
+                        &actual.source_location,
+                        format!(
+                            "unexpected token type '{:?}' (expected {joined})",
+                            actual.type_
+                        ),
+                        "unexpected token encountered here",
+                    );
+                }
+            },
             ParserError::UnexpectedEndOfInput {
                 expected,
                 end_of_input_token,

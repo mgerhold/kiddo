@@ -15,7 +15,9 @@ use crate::import_resolution::representations::{
 };
 use crate::lexer::LexerError;
 use crate::parser::errors::ErrorReport;
-use crate::parser::ir_parsed::{Import, Module, QualifiedName};
+use crate::parser::ir_parsed::{
+    Import, Module, QualifiedName, QualifiedNonTypeName, QualifiedTypeName,
+};
 use crate::parser::parse_module;
 use crate::utils::AllocPath;
 
@@ -47,33 +49,91 @@ pub(crate) fn find_imports<'a>(
     for import in module.imports.iter() {
         let (what, possible_root_directories) = match import {
             Import::Import {
-                what: what @ QualifiedName::Absolute { .. },
+                what:
+                    what @ QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Absolute { .. }),
+            }
+            | Import::Import {
+                what: what @ QualifiedName::QualifiedTypeName(QualifiedTypeName::Absolute { .. }),
             }
             | Import::ImportAs {
-                what: what @ QualifiedName::Absolute { .. },
+                what:
+                    what @ QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Absolute { .. }),
+                ..
+            }
+            | Import::ImportAs {
+                what: what @ QualifiedName::QualifiedTypeName(QualifiedTypeName::Absolute { .. }),
                 ..
             }
             | Import::FromImport {
-                where_: what @ QualifiedName::Absolute { .. },
+                where_:
+                    what @ QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Absolute { .. }),
+                ..
+            }
+            | Import::FromImport {
+                where_: what @ QualifiedName::QualifiedTypeName(QualifiedTypeName::Absolute { .. }),
                 ..
             }
             | Import::FromImportAs {
-                where_: what @ QualifiedName::Absolute { .. },
+                where_:
+                    what @ QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Absolute { .. }),
+                ..
+            }
+            | Import::FromImportAs {
+                where_: what @ QualifiedName::QualifiedTypeName(QualifiedTypeName::Absolute { .. }),
                 ..
             } => (what, directories_for_absolute_imports),
             Import::Import {
-                what: what_or_where @ QualifiedName::Relative { .. },
+                what:
+                    what_or_where @ QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Relative {
+                        ..
+                    }),
+            }
+            | Import::Import {
+                what:
+                    what_or_where @ QualifiedName::QualifiedTypeName(QualifiedTypeName::Relative {
+                        ..
+                    }),
             }
             | Import::ImportAs {
-                what: what_or_where @ QualifiedName::Relative { .. },
+                what:
+                    what_or_where @ QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Relative {
+                        ..
+                    }),
+                ..
+            }
+            | Import::ImportAs {
+                what:
+                    what_or_where @ QualifiedName::QualifiedTypeName(QualifiedTypeName::Relative {
+                        ..
+                    }),
                 ..
             }
             | Import::FromImport {
-                where_: what_or_where @ QualifiedName::Relative { .. },
+                where_:
+                    what_or_where @ QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Relative {
+                        ..
+                    }),
+                ..
+            }
+            | Import::FromImport {
+                where_:
+                    what_or_where @ QualifiedName::QualifiedTypeName(QualifiedTypeName::Relative {
+                        ..
+                    }),
                 ..
             }
             | Import::FromImportAs {
-                where_: what_or_where @ QualifiedName::Relative { .. },
+                where_:
+                    what_or_where @ QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Relative {
+                        ..
+                    }),
+                ..
+            }
+            | Import::FromImportAs {
+                where_:
+                    what_or_where @ QualifiedName::QualifiedTypeName(QualifiedTypeName::Relative {
+                        ..
+                    }),
                 ..
             } => (what_or_where, directories_for_relative_imports),
         };
@@ -106,8 +166,8 @@ impl<'a> CheckAgainstDuplicateIdentifierDefinitions<'a> for ModulesWithImports<'
             for (i, current_definition) in module_with_imports.module.definitions.iter().enumerate()
             {
                 for definition in &module_with_imports.module.definitions[..i] {
-                    if current_definition.identifier().token.lexeme()
-                        == definition.identifier().token.lexeme()
+                    if current_definition.identifier().token().lexeme()
+                        == definition.identifier().token().lexeme()
                     {
                         return Err(DuplicateIdentifiersError {
                             definition: *current_definition,
@@ -289,13 +349,13 @@ fn check_imports_for_module<'a>(
             continue;
         }
         let symbol_to_import = symbol_to_import.unwrap();
-        let name_to_import = symbol_to_import.token.lexeme();
+        let name_to_import = symbol_to_import.token().lexeme();
         let source_module = resolved_import.from_module;
         let definition = source_module
             .exported_definitions
             .iter()
             .cloned()
-            .find(|definition| definition.identifier().token.lexeme() == name_to_import);
+            .find(|definition| definition.identifier().token().lexeme() == name_to_import);
 
         match definition {
             Some(definition) => connected_imports.push(ConnectedImport {
@@ -309,7 +369,7 @@ fn check_imports_for_module<'a>(
                         .definitions
                         .iter()
                         .find_map(|definition| {
-                            (definition.identifier().token.lexeme() == name_to_import)
+                            (definition.identifier().token().lexeme() == name_to_import)
                                 .then_some(*definition)
                         });
                 return Err(ImportError::SymbolNotFound {
@@ -332,7 +392,9 @@ fn check_imports_for_module<'a>(
             .definitions
             .iter()
             .copied()
-            .find(|definition| definition.identifier().token.lexeme() == imported_as.token.lexeme())
+            .find(|definition| {
+                definition.identifier().token().lexeme() == imported_as.token().lexeme()
+            })
         {
             return Err(ImportError::ImportedClashWithLocalDefinition {
                 import: connected_import,
