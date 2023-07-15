@@ -7,7 +7,7 @@ use bumpalo::Bump;
 use clap::Parser;
 
 use crate::import_resolution::errors::ImportError;
-use crate::import_resolution::{find_imports, perform_input_resolution, ModuleWithImports};
+use crate::import_resolution::{find_imports, perform_import_resolution, ModuleWithImports};
 use crate::parser::errors::ErrorReport;
 use crate::parser::parse_module;
 use crate::utils::AllocPath;
@@ -85,6 +85,7 @@ pub fn main<'a>(bump_allocator: &'a Bump) -> Result<(), Box<dyn ErrorReport + 'a
     };
 
     let all_modules = perform_input_resolution(main_module, import_directories, bump_allocator)?;
+    let all_modules = perform_import_resolution(main_module, import_directories, bump_allocator)?;
 
     dbg!(all_modules);
 

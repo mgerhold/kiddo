@@ -388,7 +388,7 @@ fn module_by_canonical_path<'a>(
         .find_map(|module| (module.canonical_path == canonical_path).then_some(*module))
 }
 
-pub(crate) fn perform_input_resolution<'a>(
+pub(crate) fn perform_import_resolution<'a>(
     main_module: ModuleWithImports<'a>,
     import_directories: &[&Path],
     bump_allocator: &'a Bump,
