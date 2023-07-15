@@ -4,116 +4,23 @@ use std::path::{Path, PathBuf};
 
 use bumpalo::Bump;
 
+pub use representations::ModuleWithImports;
+
 use crate::constants::SOURCE_FILE_EXTENSION;
+use crate::import_resolution::errors::{DuplicateIdentifiersError, ImportError};
+use crate::import_resolution::representations::{
+    ConnectedImport, ModuleImports, ModuleWithConnectedImports, ModuleWithImportsAndExports,
+    ModuleWithResolvedImportsAndExports, ModulesWithConnectedImports, ModulesWithImports,
+    ModulesWithImportsAndExports, ModulesWithResolvedImportsAndExports, ResolvedImport,
+};
 use crate::lexer::LexerError;
-use crate::parser::errors::{print_error, print_note, ErrorReport};
-use crate::parser::ir_parsed::{Definition, Identifier, Import, Module, QualifiedName};
+use crate::parser::errors::ErrorReport;
+use crate::parser::ir_parsed::{Import, Module, QualifiedName};
 use crate::parser::parse_module;
 use crate::utils::AllocPath;
 
-#[derive(Debug)]
-pub enum ImportError<'a> {
-    ModuleNotFound {
-        import_path: QualifiedName<'a>,
-        path_to_search: PathBuf,
-    },
-    SymbolNotFound {
-        imported_module: ModuleWithImportsAndExports<'a>,
-        import_path: QualifiedName<'a>,
-        symbol_token: Identifier<'a>,
-        non_exported_definition: Option<Definition<'a>>,
-    },
-    ImportedClashWithLocalDefinition {
-        import: ConnectedImport<'a>,
-        local_definition_with_same_identifier: Definition<'a>,
-    },
-    DuplicateImport {
-        import: ResolvedImport<'a>,
-        previous_import: ResolvedImport<'a>,
-    },
-}
-
-impl ErrorReport for ImportError<'_> {
-    fn print_report(&self) {
-        match self {
-            ImportError::ModuleNotFound {
-                import_path,
-                path_to_search,
-            } => {
-                print_error(
-                    &import_path
-                        .tokens()
-                        .last()
-                        .expect("there should be at least one token")
-                        .source_location,
-                    format!("'{}' not found in import paths", path_to_search.display()),
-                    "unable to resolve this import",
-                );
-            }
-            ImportError::SymbolNotFound {
-                imported_module,
-                import_path,
-                symbol_token,
-                non_exported_definition,
-            } => {
-                print_error(
-                    &symbol_token.token.source_location,
-                    format!(
-                        "module '{}' (in '{}') does not export symbol '{}'",
-                        import_path.as_string(),
-                        imported_module.canonical_path.display(),
-                        symbol_token.token.lexeme()
-                    ),
-                    "symbol not found",
-                );
-                if let Some(non_exported_definition) = non_exported_definition {
-                    print_note(
-                        &non_exported_definition.identifier().token.source_location,
-                        "there is a definition with the requested name that has not been exported",
-                        "did you forget to export this definition?",
-                    );
-                }
-            }
-            ImportError::ImportedClashWithLocalDefinition {
-                import,
-                local_definition_with_same_identifier,
-            } => {
-                print_error(
-                    &import.import.as_what().expect("this error can only occur when importing as a name").token.source_location,
-                    format!("imported definition '{}' clashes with module-local definition with the same name", import.import.as_what().unwrap().token.lexeme()),
-                    "symbol imported here",
-                );
-                print_note(
-                    &local_definition_with_same_identifier
-                        .identifier()
-                        .token
-                        .source_location,
-                    "module-local definition with the same name prevents import",
-                    "symbol defined here",
-                );
-            }
-            ImportError::DuplicateImport {
-                import,
-                previous_import,
-            } => {
-                print_error(
-                    &import.import.imported_namespace().expect("this error can only occur when importing a whole namespace").source_location(),
-                    format!("imported module '{}' clashes with previously imported module with the same name", import.import.imported_namespace().unwrap().as_string()),
-                    "module imported here",
-                );
-                print_note(
-                    &previous_import
-                        .import
-                        .imported_namespace()
-                        .unwrap()
-                        .source_location(),
-                    "previously imported module prevents import",
-                    "module imported here",
-                );
-            }
-        }
-    }
-}
+pub(crate) mod errors;
+mod representations;
 
 fn find_path(relative_path: &Path, possible_roots: &[&Path]) -> Option<PathBuf> {
     possible_roots
@@ -121,8 +28,6 @@ fn find_path(relative_path: &Path, possible_roots: &[&Path]) -> Option<PathBuf> 
         .map(|root| root.join(relative_path))
         .find(|path| path.exists())
 }
-
-type ModuleImports<'a> = &'a [(Import<'a>, &'a Path)];
 
 pub(crate) fn find_imports<'a>(
     module_directory: &'a Path,
@@ -187,26 +92,40 @@ pub(crate) fn find_imports<'a>(
     Ok(imports)
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct ModuleWithImports<'a> {
-    pub(crate) canonical_path: &'a Path,
-    pub(crate) module: Module<'a>,
-    pub(crate) imports: ModuleImports<'a>,
+trait CheckAgainstDuplicateIdentifierDefinitions<'a> {
+    fn check_against_duplicate_identifier_definitions(
+        self,
+    ) -> Result<ModulesWithImports<'a>, DuplicateIdentifiersError<'a>>;
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct ModuleWithImportsAndExports<'a> {
-    pub(crate) canonical_path: &'a Path,
-    pub(crate) module: Module<'a>,
-    pub(crate) imports: ModuleImports<'a>,
-    pub(crate) exported_definitions: &'a [Definition<'a>],
+impl<'a> CheckAgainstDuplicateIdentifierDefinitions<'a> for ModulesWithImports<'a> {
+    fn check_against_duplicate_identifier_definitions(
+        self,
+    ) -> Result<ModulesWithImports<'a>, DuplicateIdentifiersError<'a>> {
+        for module_with_imports in self {
+            for (i, current_definition) in module_with_imports.module.definitions.iter().enumerate()
+            {
+                for definition in &module_with_imports.module.definitions[..i] {
+                    if current_definition.identifier().token.lexeme()
+                        == definition.identifier().token.lexeme()
+                    {
+                        return Err(DuplicateIdentifiersError {
+                            definition: *current_definition,
+                            previous_definition: *definition,
+                        });
+                    }
+                }
+            }
+        }
+        Ok(self)
+    }
 }
 
-pub(crate) fn find_all_imports<'a>(
+fn find_all_imports<'a>(
     main_module: ModuleWithImports<'a>,
     import_directories: &[&Path],
     bump_allocator: &'a Bump,
-) -> Result<&'a [ModuleWithImports<'a>], Box<dyn ErrorReport + 'a>> {
+) -> Result<ModulesWithImports<'a>, Box<dyn ErrorReport + 'a>> {
     println!("main module is {}", main_module.canonical_path.display());
 
     let mut processed_files = HashSet::new();
@@ -263,34 +182,29 @@ pub(crate) fn find_all_imports<'a>(
     Ok(all_modules)
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct ResolvedImport<'a> {
-    pub(crate) import: Import<'a>,
-    pub(crate) from_module: ModuleWithImportsAndExports<'a>,
+trait ResolveAllImports<'a> {
+    fn resolve_all_imports(
+        self,
+        bump_allocator: &'a Bump,
+    ) -> ModulesWithResolvedImportsAndExports<'a>;
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct ModuleWithResolvedImportsAndExports<'a> {
-    pub(crate) canonical_path: &'a Path,
-    pub(crate) module: Module<'a>,
-    pub(crate) imports: &'a [ResolvedImport<'a>],
-    pub(crate) exported_definitions: &'a [Definition<'a>],
-}
-
-pub(crate) fn resolve_all_imports<'a>(
-    all_modules: &'a [ModuleWithImportsAndExports<'a>],
-    bump_allocator: &'a Bump,
-) -> &'a [ModuleWithResolvedImportsAndExports<'a>] {
-    let modules_with_resolved_imports: Vec<_> = all_modules
-        .iter()
-        .map(|module| resolve_imports(*module, all_modules, bump_allocator))
-        .collect();
-    bump_allocator.alloc_slice_copy(&modules_with_resolved_imports)
+impl<'a> ResolveAllImports<'a> for ModulesWithImportsAndExports<'a> {
+    fn resolve_all_imports(
+        self,
+        bump_allocator: &'a Bump,
+    ) -> ModulesWithResolvedImportsAndExports<'a> {
+        let modules_with_resolved_imports: Vec<_> = self
+            .iter()
+            .map(|module| resolve_imports(*module, self, bump_allocator))
+            .collect();
+        bump_allocator.alloc_slice_copy(&modules_with_resolved_imports)
+    }
 }
 
 fn resolve_imports<'a>(
     module_with_imports_and_exports: ModuleWithImportsAndExports<'a>,
-    all_modules: &'a [ModuleWithImportsAndExports<'a>],
+    all_modules: ModulesWithImportsAndExports<'a>,
     bump_allocator: &'a Bump,
 ) -> ModuleWithResolvedImportsAndExports<'a> {
     let resolved_imports: Vec<_> = module_with_imports_and_exports
@@ -311,15 +225,18 @@ fn resolve_imports<'a>(
     }
 }
 
-pub(crate) fn gather_all_exports<'a>(
-    modules_with_imports: &'a [ModuleWithImports<'a>],
-    bump_allocator: &'a Bump,
-) -> &'a [ModuleWithImportsAndExports<'a>] {
-    let result: Vec<_> = modules_with_imports
-        .iter()
-        .map(|module| gather_exports(*module, bump_allocator))
-        .collect();
-    bump_allocator.alloc_slice_copy(&result)
+trait GatherAllExports<'a> {
+    fn gather_all_exports(self, bump_allocator: &'a Bump) -> ModulesWithImportsAndExports;
+}
+
+impl<'a> GatherAllExports<'a> for ModulesWithImports<'a> {
+    fn gather_all_exports(self, bump_allocator: &'a Bump) -> ModulesWithImportsAndExports {
+        let result: Vec<_> = self
+            .iter()
+            .map(|module| gather_exports(*module, bump_allocator))
+            .collect();
+        bump_allocator.alloc_slice_copy(&result)
+    }
 }
 
 fn gather_exports<'a>(
@@ -341,29 +258,24 @@ fn gather_exports<'a>(
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-pub struct ConnectedImport<'a> {
-    pub(crate) import: Import<'a>,
-    pub(crate) definition: Definition<'a>,
+trait CheckImports<'a> {
+    fn check_imports(
+        self,
+        bump_allocator: &'a Bump,
+    ) -> Result<ModulesWithConnectedImports<'a>, ImportError<'a>>;
 }
 
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct ModuleWithConnectedImports<'a> {
-    pub(crate) canonical_path: &'a Path,
-    pub(crate) module: Module<'a>,
-    pub(crate) imports: &'a [ConnectedImport<'a>],
-}
-
-pub(crate) fn check_imports<'a>(
-    modules_with_resolved_imports_and_exports: &'a [ModuleWithResolvedImportsAndExports],
-    bump_allocator: &'a Bump,
-) -> Result<&'a [ModuleWithConnectedImports<'a>], ImportError<'a>> {
-    let modules_with_connected_imports: Result<Vec<_>, _> =
-        modules_with_resolved_imports_and_exports
+impl<'a> CheckImports<'a> for ModulesWithResolvedImportsAndExports<'a> {
+    fn check_imports(
+        self,
+        bump_allocator: &'a Bump,
+    ) -> Result<ModulesWithConnectedImports<'a>, ImportError<'a>> {
+        let modules_with_connected_imports: Result<Vec<_>, _> = self
             .iter()
             .map(|module| check_imports_for_module(*module, bump_allocator))
             .collect();
-    Ok(bump_allocator.alloc_slice_copy(&(modules_with_connected_imports?)))
+        Ok(bump_allocator.alloc_slice_copy(&(modules_with_connected_imports?)))
+    }
 }
 
 fn check_imports_for_module<'a>(
@@ -469,9 +381,23 @@ fn check_imports_for_module<'a>(
 
 fn module_by_canonical_path<'a>(
     canonical_path: &'a Path,
-    all_modules: &'a [ModuleWithImportsAndExports],
+    all_modules: ModulesWithImportsAndExports<'a>,
 ) -> Option<ModuleWithImportsAndExports<'a>> {
     all_modules
         .iter()
         .find_map(|module| (module.canonical_path == canonical_path).then_some(*module))
+}
+
+pub(crate) fn perform_input_resolution<'a>(
+    main_module: ModuleWithImports<'a>,
+    import_directories: &[&Path],
+    bump_allocator: &'a Bump,
+) -> Result<ModulesWithConnectedImports<'a>, Box<dyn ErrorReport + 'a>> {
+    Ok(
+        find_all_imports(main_module, import_directories, bump_allocator)?
+            .check_against_duplicate_identifier_definitions()?
+            .gather_all_exports(bump_allocator)
+            .resolve_all_imports(bump_allocator)
+            .check_imports(bump_allocator)?,
+    )
 }

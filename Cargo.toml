@@ -8,6 +8,7 @@ edition = "2021"
 [dependencies]
 ariadne = "0.3.0"
 bumpalo = "3.13.0"
+clap = { version = "4.3.12", features = ["derive"] }
 num-traits = "0.2.15"
 unicode-width = "0.1.10"
 unicode-xid = "0.2.4"
