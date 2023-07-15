@@ -65,7 +65,7 @@ pub fn main<'a>(bump_allocator: &'a Bump) -> Result<(), Box<dyn ErrorReport + 'a
 
     let all_modules = resolve_all_imports(all_modules, bump_allocator);
 
-    check_imports(all_modules)?;
+    let all_modules = check_imports(all_modules, bump_allocator)?;
 
     dbg!(all_modules);
 
