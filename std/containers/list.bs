@@ -10,7 +10,6 @@ import ::std::containers::dyn_array; // circular import
 import ::std::containers::dyn_array as darray; // circular import
 from dyn_array import DynArray;
 from dyn_array import DynArray as Derrick;
-from ::std::containers::dyn_array import DynArray;
 from ::std::containers::dyn_array import DynArray as Danny;
 
 struct ListPointer {

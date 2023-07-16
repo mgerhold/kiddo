@@ -6,9 +6,10 @@ import std::containers::dyn_array as darray;
 import std::containers::list as list;
 import std::containers::list as l;
 import ::std::containers::list;
+from ::std::intrinsics import Never as never_ever;
 from ::std::intrinsics import Never;
 
-export struct S1 {
+export struct S {
     number: U32,
     another: U32,
     function_pointer: Function(U32, ::std::string::String, [->mutable Function(U8, U8) ~> U8; 0xA]) ~> Nothing,

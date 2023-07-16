@@ -155,13 +155,32 @@ pub(crate) fn find_imports<'a>(
 trait CheckAgainstDuplicateIdentifierDefinitions<'a> {
     fn check_against_duplicate_identifier_definitions(
         self,
-    ) -> Result<ModulesWithImports<'a>, DuplicateIdentifiersError<'a>>;
+    ) -> Result<ModulesWithImports<'a>, Box<dyn ErrorReport + 'a>>;
 }
 
 impl<'a> CheckAgainstDuplicateIdentifierDefinitions<'a> for ModulesWithImports<'a> {
     fn check_against_duplicate_identifier_definitions(
         self,
-    ) -> Result<ModulesWithImports<'a>, DuplicateIdentifiersError<'a>> {
+    ) -> Result<ModulesWithImports<'a>, Box<dyn ErrorReport + 'a>> {
+        for module_with_imports in self {
+            for (i, (current_import, _)) in module_with_imports.imports.iter().enumerate() {
+                let Some(imported_symbol) = current_import.as_what() else {
+                    continue;
+                };
+                for (import, _) in &module_with_imports.imports[..i] {
+                    let Some(symbol) = import.as_what() else {
+                        continue;
+                    };
+                    if imported_symbol == symbol {
+                        return Err(Box::new(ImportError::DoublyImportedSymbol {
+                            import: *current_import,
+                            previous_import: *import,
+                        }));
+                    }
+                }
+            }
+        }
+
         for module_with_imports in self {
             for (i, current_definition) in module_with_imports.module.definitions.iter().enumerate()
             {
@@ -169,10 +188,10 @@ impl<'a> CheckAgainstDuplicateIdentifierDefinitions<'a> for ModulesWithImports<'
                     if current_definition.identifier().token().lexeme()
                         == definition.identifier().token().lexeme()
                     {
-                        return Err(DuplicateIdentifiersError {
+                        return Err(Box::new(DuplicateIdentifiersError {
                             definition: *current_definition,
                             previous_definition: *definition,
-                        });
+                        }));
                     }
                 }
             }
@@ -403,6 +422,18 @@ fn check_imports_for_module<'a>(
         }
     }
 
+    check_against_duplicate_namespace_imports(module_with_resolved_imports_and_exports)?;
+
+    Ok(ModuleWithConnectedImports {
+        canonical_path: module_with_resolved_imports_and_exports.canonical_path,
+        module: module_with_resolved_imports_and_exports.module,
+        imports: bump_allocator.alloc_slice_copy(&connected_imports),
+    })
+}
+
+fn check_against_duplicate_namespace_imports(
+    module_with_resolved_imports_and_exports: ModuleWithResolvedImportsAndExports,
+) -> Result<(), ImportError> {
     for (i, resolved_import) in module_with_resolved_imports_and_exports
         .imports
         .iter()
@@ -433,12 +464,7 @@ fn check_imports_for_module<'a>(
             }
         }
     }
-
-    Ok(ModuleWithConnectedImports {
-        canonical_path: module_with_resolved_imports_and_exports.canonical_path,
-        module: module_with_resolved_imports_and_exports.module,
-        imports: bump_allocator.alloc_slice_copy(&connected_imports),
-    })
+    Ok(())
 }
 
 fn module_by_canonical_path<'a>(

@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 use crate::import_resolution::{ConnectedImport, ModuleWithImportsAndExports, ResolvedImport};
 use crate::parser::errors::{print_error, print_note, ErrorReport};
-use crate::parser::ir_parsed::{Definition, Identifier, QualifiedName};
+use crate::parser::ir_parsed::{Definition, Identifier, Import, QualifiedName};
 
 #[derive(Debug)]
 pub struct DuplicateIdentifiersError<'a> {
@@ -33,6 +33,7 @@ impl ErrorReport for DuplicateIdentifiersError<'_> {
 }
 
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)] // ¯\_(ツ)_/¯
 pub enum ImportError<'a> {
     ImportPathNotFound {
         import_path: &'a Path,
@@ -60,6 +61,10 @@ pub enum ImportError<'a> {
     },
     FileNotFound {
         path: &'a Path,
+    },
+    DoublyImportedSymbol {
+        import: Import<'a>,
+        previous_import: Import<'a>,
     },
 }
 
@@ -152,6 +157,21 @@ impl ErrorReport for ImportError<'_> {
             }
             ImportError::FileNotFound { path } => {
                 eprintln!("error: file not found: '{}'", path.display());
+            }
+            ImportError::DoublyImportedSymbol {
+                import,
+                previous_import,
+            } => {
+                print_error(
+                    &import.as_what().expect("this error can only occur when importing a symbol").token().source_location,
+                    format!("imported symbol '{}' clashes with previously imported symbol with the same name", import.imported_symbol().unwrap().token().lexeme()),
+                    "symbol imported here",
+                );
+                print_note(
+                    &previous_import.as_what().unwrap().token().source_location,
+                    "previously imported symbol prevents import",
+                    "symbol imported here",
+                );
             }
         }
     }
