@@ -361,6 +361,54 @@ fn check_imports_for_module<'a>(
     module_with_resolved_imports_and_exports: ModuleWithResolvedImportsAndExports<'a>,
     bump_allocator: &'a Bump,
 ) -> Result<ModuleWithConnectedImports<'a>, ImportError<'a>> {
+    let connected_imports =
+        connect_imports(module_with_resolved_imports_and_exports, bump_allocator)?;
+
+    check_against_clashed_with_local_definitions(
+        module_with_resolved_imports_and_exports,
+        connected_imports,
+    )?;
+
+    check_against_duplicate_namespace_imports(module_with_resolved_imports_and_exports)?;
+
+    Ok(ModuleWithConnectedImports {
+        canonical_path: module_with_resolved_imports_and_exports.canonical_path,
+        module: module_with_resolved_imports_and_exports.module,
+        imports: connected_imports,
+    })
+}
+
+fn check_against_clashed_with_local_definitions<'a>(
+    module_with_resolved_imports_and_exports: ModuleWithResolvedImportsAndExports<'a>,
+    connected_imports: &'a [ConnectedImport<'a>],
+) -> Result<(), ImportError<'a>> {
+    for connected_import in connected_imports.iter().copied() {
+        let Some(imported_as) = connected_import.import.as_what() else {
+            continue;
+        };
+
+        if let Some(definition) = module_with_resolved_imports_and_exports
+            .module
+            .definitions
+            .iter()
+            .copied()
+            .find(|definition| {
+                definition.identifier().token().lexeme() == imported_as.token().lexeme()
+            })
+        {
+            return Err(ImportError::ImportedClashWithLocalDefinition {
+                import: connected_import,
+                local_definition_with_same_identifier: definition,
+            });
+        }
+    }
+    Ok(())
+}
+
+fn connect_imports<'a>(
+    module_with_resolved_imports_and_exports: ModuleWithResolvedImportsAndExports<'a>,
+    bump_allocator: &'a Bump,
+) -> Result<&'a [ConnectedImport<'a>], ImportError<'a>> {
     let mut connected_imports = Vec::new();
     for resolved_import in module_with_resolved_imports_and_exports.imports {
         let symbol_to_import = resolved_import.import.imported_symbol();
@@ -400,35 +448,7 @@ fn check_imports_for_module<'a>(
             }
         }
     }
-
-    for connected_import in connected_imports.iter().copied() {
-        let Some(imported_as) = connected_import.import.as_what() else {
-            continue;
-        };
-
-        if let Some(definition) = module_with_resolved_imports_and_exports
-            .module
-            .definitions
-            .iter()
-            .copied()
-            .find(|definition| {
-                definition.identifier().token().lexeme() == imported_as.token().lexeme()
-            })
-        {
-            return Err(ImportError::ImportedClashWithLocalDefinition {
-                import: connected_import,
-                local_definition_with_same_identifier: definition,
-            });
-        }
-    }
-
-    check_against_duplicate_namespace_imports(module_with_resolved_imports_and_exports)?;
-
-    Ok(ModuleWithConnectedImports {
-        canonical_path: module_with_resolved_imports_and_exports.canonical_path,
-        module: module_with_resolved_imports_and_exports.module,
-        imports: bump_allocator.alloc_slice_copy(&connected_imports),
-    })
+    Ok(bump_allocator.alloc_slice_copy(&connected_imports))
 }
 
 fn check_against_duplicate_namespace_imports(
