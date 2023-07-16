@@ -610,7 +610,7 @@ impl<'a> ParserState<'a> {
     fn qualified_type_name(&mut self) -> Result<QualifiedTypeName<'a>, ParserError<'a>> {
         /*
         QualifiedTypeName:
-            (('::')? (tokens+=LOWERCASE_IDENTIFIER '::')* )? tokens+=UPPERCASE_IDENTIFIER
+            (is_absolute?='::' (tokens+=LOWERCASE_IDENTIFIER) '::')? ((tokens+=LOWERCASE_IDENTIFIER) '::')* tokens+=UPPERCASE_IDENTIFIER
          */
         match self.qualified_name()? {
             QualifiedName::QualifiedTypeName(qualified_type_name) => Ok(qualified_type_name),
@@ -652,7 +652,8 @@ impl<'a> ParserState<'a> {
     fn qualified_name(&mut self) -> Result<QualifiedName<'a>, ParserError<'a>> {
         /*
         QualifiedName:
-            (('::')? (tokens+=LOWERCASE_IDENTIFIER '::')* )? tokens+=Identifier
+            QualifiedTypeName
+            | QualifiedNonTypeName
          */
         let rest_of_tokens = &self.tokens[self.current_index..];
 
@@ -709,6 +710,17 @@ impl<'a> ParserState<'a> {
         let tokens = &rest_of_tokens[..num_tokens];
 
         let is_type_name = tokens.last().unwrap().type_ == TokenType::UppercaseIdentifier;
+
+        if is_absolute && is_type_name {
+            assert_eq!(tokens.first().unwrap().type_, TokenType::ColonColon);
+            assert!(tokens.len() >= 2);
+            if tokens[1].type_ != TokenType::LowercaseIdentifier {
+                return Err(ParserError::TokenTypeMismatch {
+                    expected: &[TokenType::LowercaseIdentifier],
+                    actual: tokens[1],
+                });
+            }
+        }
 
         Ok(match (is_absolute, is_type_name) {
             (true, true) => {
