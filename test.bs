@@ -1,12 +1,11 @@
 import ::std::terminal;
 import ::std::terminal as t;
 from std::terminal import print;
-from std::terminal import print as p;
+from std::terminal import print as Print;
 import std::containers::dyn_array as darray;
 import std::containers::list as list;
 import std::containers::list as l;
 import ::std::containers::list;
-from ::std::intrinsics import Never as never_ever;
 from ::std::intrinsics import Never;
 
 export struct S {

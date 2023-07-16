@@ -222,7 +222,7 @@ pub enum QualifiedTypeName<'a> {
 }
 
 impl<'a> QualifiedTypeName<'a> {
-    fn tokens(&self) -> &'a [Token<'a>] {
+    pub(crate) fn tokens(&self) -> &'a [Token<'a>] {
         match self {
             QualifiedTypeName::Absolute { tokens } => tokens,
             QualifiedTypeName::Relative { tokens } => tokens,

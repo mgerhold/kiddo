@@ -19,6 +19,7 @@ use crate::parser::ir_parsed::{
     Import, Module, QualifiedName, QualifiedNonTypeName, QualifiedTypeName,
 };
 use crate::parser::parse_module;
+use crate::token::TokenType;
 use crate::utils::AllocPath;
 
 pub(crate) mod errors;
@@ -368,6 +369,8 @@ fn check_imports_for_module<'a>(
 
     check_against_duplicate_namespace_imports(module_with_resolved_imports_and_exports)?;
 
+    check_capitalization_of_renamed_imports(module_with_resolved_imports_and_exports)?;
+
     Ok(ModuleWithConnectedImports {
         canonical_path: module_with_resolved_imports_and_exports.canonical_path,
         module: module_with_resolved_imports_and_exports.module,
@@ -475,6 +478,38 @@ fn check_against_duplicate_namespace_imports(
             None => {
                 continue;
             }
+        }
+    }
+    Ok(())
+}
+
+fn check_capitalization_of_renamed_imports(
+    module: ModuleWithResolvedImportsAndExports,
+) -> Result<(), ImportError> {
+    for resolved_import in module.imports {
+        let import = resolved_import.import;
+        let (expected_token_type, actual_token, hint_location) = match import {
+            Import::Import { .. } | Import::FromImport { .. } => {
+                continue;
+            }
+            Import::ImportAs { what, as_ } => (
+                TokenType::LowercaseIdentifier,
+                as_.token(),
+                what.source_location(),
+            ),
+            Import::FromImportAs { symbol, as_, .. } => (
+                symbol.token().type_,
+                as_.token(),
+                symbol.token().source_location,
+            ),
+        };
+
+        let actual_token_type = actual_token.type_;
+        if expected_token_type != actual_token_type {
+            return Err(ImportError::ImportedAsForbiddenName {
+                as_: actual_token,
+                hint_location,
+            });
         }
     }
     Ok(())

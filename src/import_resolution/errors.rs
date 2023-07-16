@@ -3,6 +3,7 @@ use std::path::{Path, PathBuf};
 use crate::import_resolution::{ModuleWithImportsAndExports, ResolvedImport};
 use crate::parser::errors::{print_error, print_note, ErrorReport};
 use crate::parser::ir_parsed::{Definition, Identifier, Import, QualifiedName};
+use crate::token::{SourceLocation, Token, TokenType};
 
 #[derive(Debug)]
 pub struct DuplicateIdentifiersError<'a> {
@@ -65,6 +66,10 @@ pub enum ImportError<'a> {
     DoublyImportedSymbol {
         import: Import<'a>,
         previous_import: Import<'a>,
+    },
+    ImportedAsForbiddenName {
+        as_: Token<'a>,
+        hint_location: SourceLocation<'a>,
     },
 }
 
@@ -173,6 +178,33 @@ impl ErrorReport for ImportError<'_> {
                     "symbol imported here",
                 );
             }
+            ImportError::ImportedAsForbiddenName { as_, hint_location } => match as_.type_ {
+                TokenType::LowercaseIdentifier => {
+                    print_error(
+                        &as_.source_location,
+                        format!("cannot import type as '{}'", as_.lexeme()),
+                        "type names must start with an uppercase character",
+                    );
+                    print_note(
+                        hint_location,
+                        "error occurred while trying to import this type",
+                        "this is a type name",
+                    );
+                }
+                TokenType::UppercaseIdentifier => {
+                    print_error(
+                        &as_.source_location,
+                        format!("cannot import non-type as '{}'", as_.lexeme()),
+                        "non-type names must start with a lowercase character",
+                    );
+                    print_note(
+                        hint_location,
+                        "error occurred while trying to import this non-type symbol",
+                        "this is a non-type",
+                    );
+                }
+                _ => unreachable!(),
+            },
         }
     }
 }
