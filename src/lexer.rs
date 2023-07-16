@@ -32,13 +32,14 @@ impl fmt::Display for LexerError<'_> {
 }
 
 impl ErrorReport for LexerError<'_> {
-    fn print_report(&self) {
+    fn print_report(&self, output_filename: Option<&Path>) {
         match self {
             LexerError::InvalidInput(location, char) => {
                 print_error(
                     location,
                     format!("invalid input '{char}'"),
                     "invalid character",
+                    output_filename,
                 );
             }
             LexerError::UnterminatedMultilineComment(location) => {
@@ -46,32 +47,38 @@ impl ErrorReport for LexerError<'_> {
                     location,
                     "unterminated multiline comment",
                     "multiline comment starts here",
+                    output_filename,
                 );
             }
             LexerError::ExpectedBinaryDigit(location) => print_error(
                 location,
                 format!("'{}' is not a valid binary digit", location.lexeme()),
                 "error occurred here",
+                output_filename,
             ),
             LexerError::ExpectedOctalDigit(location) => print_error(
                 location,
                 format!("'{}' is not a valid octal digit", location.lexeme()),
                 "error occurred here",
+                output_filename,
             ),
             LexerError::ExpectedDecimalDigit(location) => print_error(
                 location,
                 format!("'{}' is not a valid decimal digit", location.lexeme()),
                 "error occurred here",
+                output_filename,
             ),
             LexerError::ExpectedChar(location) => print_error(
                 location,
                 format!("'{}' is not a valid char", location.lexeme()),
                 "error occurred here",
+                output_filename,
             ),
             LexerError::InvalidEscapeSequence(location, char) => print_error(
                 location,
                 format!("'\\{}' is not a valid escape sequence", char),
                 "error occurred here",
+                output_filename,
             ),
             LexerError::UnexpectedCharacter {
                 source_location,
@@ -81,6 +88,7 @@ impl ErrorReport for LexerError<'_> {
                 source_location,
                 format!("expected '{expected}', got '{actual}' instead"),
                 "unexpected character encountered here",
+                output_filename,
             ),
             LexerError::FailedToReadFile(error) => eprintln!("failed to read file: {:?}", error),
         }

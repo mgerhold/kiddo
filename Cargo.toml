@@ -12,3 +12,12 @@ clap = { version = "4.3.12", features = ["derive"] }
 num-traits = "0.2.15"
 unicode-width = "0.1.10"
 unicode-xid = "0.2.4"
+
+[dev-dependencies]
+insta = { version = "1.31.0", features = ["yaml"] }
+
+[profile.dev.package.insta]
+opt-level = 3
+
+[profile.dev.package.similar]
+opt-level = 3

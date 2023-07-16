@@ -2,9 +2,8 @@
 #![feature(os_str_bytes)]
 
 use bumpalo::Bump;
-use clap::Parser;
 
-use crate::command_line_arguments::CommandLineArguments;
+pub use crate::command_line_arguments::CommandLineArguments;
 use crate::helpers::{gather_import_directories, get_canonical_path_to_main_module};
 use crate::import_resolution::{find_imports, perform_import_resolution, ModuleWithImports};
 use crate::parser::errors::ErrorReport;
@@ -20,10 +19,13 @@ mod parser;
 mod token;
 mod utils;
 
-pub fn main<'a>(bump_allocator: &'a Bump) -> Result<(), Box<dyn ErrorReport + 'a>> {
-    // parse command line arguments
-    let command_line_args = CommandLineArguments::parse();
+#[cfg(test)]
+mod test;
 
+pub fn main<'a>(
+    bump_allocator: &'a Bump,
+    command_line_args: CommandLineArguments,
+) -> Result<(), Box<dyn ErrorReport + 'a>> {
     let main_module_canonical_path =
         get_canonical_path_to_main_module(&command_line_args, bump_allocator)?;
     let main_module_directory = bump_allocator.alloc_path(
@@ -59,7 +61,12 @@ pub fn main<'a>(bump_allocator: &'a Bump) -> Result<(), Box<dyn ErrorReport + 'a
 
     let all_modules = perform_import_resolution(main_module, import_directories, bump_allocator)?;
 
-    dbg!(all_modules);
+    if let Some(ast_output_path) = command_line_args.ast_output_path {
+        let ast = format!("{:#?}", &all_modules);
+        std::fs::write(ast_output_path, ast).unwrap();
+    }
+
+    // dbg!(all_modules);
 
     Ok(())
 }

@@ -1,4 +1,5 @@
 use std::fmt::Debug;
+use std::path::Path;
 
 use ariadne::{Color, Label, Report, ReportKind, Source};
 
@@ -8,20 +9,29 @@ pub(crate) fn print_error<S1: Into<String>, S2: Into<String>>(
     location: &SourceLocation,
     message: S1,
     label_message: S2,
+    output_filename: Option<&Path>,
 ) {
-    print_report(ReportKind::Error, location, message, label_message);
+    print_report(
+        ReportKind::Error,
+        location,
+        message,
+        label_message,
+        output_filename,
+    );
 }
 
 pub(crate) fn print_note<S1: Into<String>, S2: Into<String>>(
     location: &SourceLocation,
     message: S1,
     label_message: S2,
+    output_filename: Option<&Path>,
 ) {
     print_report(
         ReportKind::Custom("Note", Color::Blue),
         location,
         message,
         label_message,
+        output_filename,
     );
 }
 
@@ -30,20 +40,28 @@ fn print_report<S1: Into<String>, S2: Into<String>>(
     location: &SourceLocation,
     message: S1,
     label_message: S2,
+    output_filename: Option<&Path>,
 ) {
     let filename = location.filename();
     let filename = filename.to_string_lossy();
     let filename = filename.strip_prefix("\\\\?\\").unwrap();
-    Report::build(report_kind, filename, location.char_offset())
+
+    let report = Report::build(report_kind, filename, location.char_offset())
         .with_message(message.into())
         .with_label(Label::new((filename, location.char_span())).with_message(label_message.into()))
-        .finish()
-        .print((filename, Source::from(location.source())))
+        .finish();
+
+    if let Some(output_filename) = output_filename {
+        std::fs::write(output_filename, format!("{:#?}", report)).unwrap();
+    }
+
+    report
+        .eprint((filename, Source::from(location.source())))
         .unwrap();
 }
 
 pub trait ErrorReport: Debug {
-    fn print_report(&self);
+    fn print_report(&self, output_filename: Option<&Path>);
 }
 
 impl<'a, E> From<E> for Box<dyn ErrorReport + 'a>
@@ -71,7 +89,7 @@ pub enum ParserError<'a> {
 }
 
 impl ErrorReport for ParserError<'_> {
-    fn print_report(&self) {
+    fn print_report(&self, output_filename: Option<&Path>) {
         match self {
             ParserError::TokenTypeMismatch { expected, actual } => match (expected, actual.type_) {
                 ([TokenType::UppercaseIdentifier], TokenType::LowercaseIdentifier) => {
@@ -79,6 +97,7 @@ impl ErrorReport for ParserError<'_> {
                         &actual.source_location,
                         "type identifier expected, got non-type identifier instead",
                         "this identifier must start with an uppercase character",
+                        output_filename,
                     );
                 }
                 ([TokenType::LowercaseIdentifier], TokenType::UppercaseIdentifier) => {
@@ -86,6 +105,7 @@ impl ErrorReport for ParserError<'_> {
                         &actual.source_location,
                         "non-type identifier expected, got type-identifier instead",
                         "this identifier must start with a lowercase character",
+                        output_filename,
                     );
                 }
                 ([TokenType::EndOfInput], _) => {
@@ -93,6 +113,7 @@ impl ErrorReport for ParserError<'_> {
                         &actual.source_location,
                         format!("unexpected token type '{:?}'", actual.type_),
                         "unexpected token encountered here",
+                        output_filename,
                     );
                 }
                 _ => {
@@ -109,6 +130,7 @@ impl ErrorReport for ParserError<'_> {
                             actual.type_
                         ),
                         "unexpected token encountered here",
+                        output_filename,
                     );
                 }
             },
@@ -128,6 +150,7 @@ impl ErrorReport for ParserError<'_> {
                             &token.source_location,
                             format!("unexpected end of input (expected {joined})"),
                             "unexpected token encountered here",
+                            output_filename,
                         );
                     }
                     None => {
@@ -139,6 +162,7 @@ impl ErrorReport for ParserError<'_> {
                 &token.source_location,
                 format!("integer literal '{}' out of bounds", token.lexeme()),
                 "this integer literal is out of bounds",
+                output_filename,
             ),
         }
     }

@@ -12,7 +12,7 @@ pub struct DuplicateIdentifiersError<'a> {
 }
 
 impl ErrorReport for DuplicateIdentifiersError<'_> {
-    fn print_report(&self) {
+    fn print_report(&self, output_filename: Option<&Path>) {
         print_error(
             &self.definition.identifier().token().source_location,
             format!(
@@ -20,6 +20,7 @@ impl ErrorReport for DuplicateIdentifiersError<'_> {
                 self.definition.identifier().token().lexeme()
             ),
             "re-defined here",
+            output_filename,
         );
         print_note(
             &self
@@ -29,6 +30,7 @@ impl ErrorReport for DuplicateIdentifiersError<'_> {
                 .source_location,
             "previous definition occurred here",
             "already defined here",
+            output_filename,
         );
     }
 }
@@ -74,7 +76,7 @@ pub enum ImportError<'a> {
 }
 
 impl ErrorReport for ImportError<'_> {
-    fn print_report(&self) {
+    fn print_report(&self, output_filename: Option<&Path>) {
         match self {
             ImportError::ImportPathNotFound { import_path } => {
                 eprintln!(
@@ -94,6 +96,7 @@ impl ErrorReport for ImportError<'_> {
                         .source_location,
                     format!("'{}' not found in import paths", path_to_search.display()),
                     "unable to resolve this import",
+                    output_filename,
                 );
             }
             ImportError::SymbolNotFound {
@@ -111,12 +114,14 @@ impl ErrorReport for ImportError<'_> {
                         symbol_token.token().lexeme()
                     ),
                     "symbol not found",
+                    output_filename,
                 );
                 if let Some(non_exported_definition) = non_exported_definition {
                     print_note(
                         &non_exported_definition.identifier().token().source_location,
                         "there is a definition with the requested name that has not been exported",
                         "did you forget to export this definition?",
+                        output_filename,
                     );
                 }
             }
@@ -128,6 +133,7 @@ impl ErrorReport for ImportError<'_> {
                     &import.as_what().expect("this error can only occur when importing as a name").token().source_location,
                     format!("imported definition or module '{}' clashes with module-local definition with the same name", import.as_what().unwrap().token().lexeme()),
                     "symbol imported here",
+                    output_filename,
                 );
                 print_note(
                     &local_definition_with_same_identifier
@@ -136,6 +142,7 @@ impl ErrorReport for ImportError<'_> {
                         .source_location,
                     "module-local definition with the same name prevents import",
                     "symbol defined here",
+                    output_filename,
                 );
             }
             ImportError::DuplicateImport {
@@ -146,6 +153,7 @@ impl ErrorReport for ImportError<'_> {
                     &import.import.imported_namespace().expect("this error can only occur when importing a whole namespace").source_location(),
                     format!("imported module '{}' clashes with previously imported module with the same name", import.import.imported_namespace().unwrap().as_string()),
                     "module imported here",
+                    output_filename,
                 );
                 print_note(
                     &previous_import
@@ -155,6 +163,7 @@ impl ErrorReport for ImportError<'_> {
                         .source_location(),
                     "previously imported module prevents import",
                     "module imported here",
+                    output_filename,
                 );
             }
             ImportError::UnableToCanonicalize { path } => {
@@ -171,11 +180,13 @@ impl ErrorReport for ImportError<'_> {
                     &import.as_what().expect("this error can only occur when importing a symbol").token().source_location,
                     format!("imported symbol '{}' clashes with previously imported symbol with the same name", import.as_what().unwrap().token().lexeme()),
                     "symbol imported here",
+                    output_filename,
                 );
                 print_note(
                     &previous_import.as_what().unwrap().token().source_location,
                     "previously imported symbol prevents import",
                     "symbol imported here",
+                    output_filename,
                 );
             }
             ImportError::ImportedAsForbiddenName { as_, hint_location } => match as_.type_ {
@@ -184,11 +195,13 @@ impl ErrorReport for ImportError<'_> {
                         &as_.source_location,
                         format!("cannot import type as '{}'", as_.lexeme()),
                         "type names must start with an uppercase character",
+                        output_filename,
                     );
                     print_note(
                         hint_location,
                         "error occurred while trying to import this type",
                         "this is a type name",
+                        output_filename,
                     );
                 }
                 TokenType::UppercaseIdentifier => {
@@ -196,11 +209,13 @@ impl ErrorReport for ImportError<'_> {
                         &as_.source_location,
                         format!("cannot import non-type as '{}'", as_.lexeme()),
                         "non-type names must start with a lowercase character",
+                        output_filename,
                     );
                     print_note(
                         hint_location,
                         "error occurred while trying to import this non-type symbol",
                         "this is a non-type",
+                        output_filename,
                     );
                 }
                 _ => unreachable!(),

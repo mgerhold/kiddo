@@ -1,4 +1,7 @@
 use bumpalo::Bump;
+use clap::Parser;
+
+use kiddo::CommandLineArguments;
 
 fn print_allocated_bytes(bump_allocator: &Bump) {
     const UNIT_NAMES: &[&str] = &["bytes", "kibytes", "mibytes"];
@@ -18,9 +21,11 @@ fn print_allocated_bytes(bump_allocator: &Bump) {
 
 fn main() {
     let bump_allocator = Bump::new();
-    let result = kiddo::main(&bump_allocator);
+    let command_line_args = CommandLineArguments::parse();
+
+    let result = kiddo::main(&bump_allocator, command_line_args);
     print_allocated_bytes(&bump_allocator);
     if let Err(report) = result {
-        report.print_report();
+        report.print_report(None);
     }
 }
