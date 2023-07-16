@@ -164,7 +164,7 @@ impl ErrorReport for ImportError<'_> {
             } => {
                 print_error(
                     &import.as_what().expect("this error can only occur when importing a symbol").token().source_location,
-                    format!("imported symbol '{}' clashes with previously imported symbol with the same name", import.imported_symbol().unwrap().token().lexeme()),
+                    format!("imported symbol '{}' clashes with previously imported symbol with the same name", import.as_what().unwrap().token().lexeme()),
                     "symbol imported here",
                 );
                 print_note(
