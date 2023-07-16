@@ -364,10 +364,7 @@ fn check_imports_for_module<'a>(
     let connected_imports =
         connect_imports(module_with_resolved_imports_and_exports, bump_allocator)?;
 
-    check_against_clashed_with_local_definitions(
-        module_with_resolved_imports_and_exports,
-        connected_imports,
-    )?;
+    check_against_clashes_with_local_definitions(module_with_resolved_imports_and_exports)?;
 
     check_against_duplicate_namespace_imports(module_with_resolved_imports_and_exports)?;
 
@@ -378,26 +375,22 @@ fn check_imports_for_module<'a>(
     })
 }
 
-fn check_against_clashed_with_local_definitions<'a>(
+fn check_against_clashes_with_local_definitions<'a>(
     module_with_resolved_imports_and_exports: ModuleWithResolvedImportsAndExports<'a>,
-    connected_imports: &'a [ConnectedImport<'a>],
 ) -> Result<(), ImportError<'a>> {
-    for connected_import in connected_imports.iter().copied() {
-        let Some(imported_as) = connected_import.import.as_what() else {
+    for resolved_import in module_with_resolved_imports_and_exports.imports {
+        let Some(imported_as) = resolved_import.import.as_what() else {
             continue;
         };
-
         if let Some(definition) = module_with_resolved_imports_and_exports
             .module
             .definitions
             .iter()
             .copied()
-            .find(|definition| {
-                definition.identifier().token().lexeme() == imported_as.token().lexeme()
-            })
+            .find(|definition| definition.identifier() == imported_as)
         {
             return Err(ImportError::ImportedClashWithLocalDefinition {
-                import: connected_import,
+                import: resolved_import.import,
                 local_definition_with_same_identifier: definition,
             });
         }

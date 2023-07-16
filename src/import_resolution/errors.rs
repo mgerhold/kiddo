@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::import_resolution::{ConnectedImport, ModuleWithImportsAndExports, ResolvedImport};
+use crate::import_resolution::{ModuleWithImportsAndExports, ResolvedImport};
 use crate::parser::errors::{print_error, print_note, ErrorReport};
 use crate::parser::ir_parsed::{Definition, Identifier, Import, QualifiedName};
 
@@ -49,7 +49,7 @@ pub enum ImportError<'a> {
         non_exported_definition: Option<Definition<'a>>,
     },
     ImportedClashWithLocalDefinition {
-        import: ConnectedImport<'a>,
+        import: Import<'a>,
         local_definition_with_same_identifier: Definition<'a>,
     },
     DuplicateImport {
@@ -120,8 +120,8 @@ impl ErrorReport for ImportError<'_> {
                 local_definition_with_same_identifier,
             } => {
                 print_error(
-                    &import.import.as_what().expect("this error can only occur when importing as a name").token().source_location,
-                    format!("imported definition '{}' clashes with module-local definition with the same name", import.import.as_what().unwrap().token().lexeme()),
+                    &import.as_what().expect("this error can only occur when importing as a name").token().source_location,
+                    format!("imported definition or module '{}' clashes with module-local definition with the same name", import.as_what().unwrap().token().lexeme()),
                     "symbol imported here",
                 );
                 print_note(
