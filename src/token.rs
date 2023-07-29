@@ -24,7 +24,7 @@ impl Debug for SourceLocation<'_> {
             f,
             "\"{}\" ({}:{}:{}, byte_offset={})",
             self.lexeme(),
-            self.filename.display(),
+            self.filename.file_name().unwrap().to_string_lossy(),
             self.line(),
             self.column(),
             self.byte_offset,
