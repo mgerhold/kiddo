@@ -44,7 +44,11 @@ fn print_report<S1: Into<String>, S2: Into<String>>(
 ) {
     let filename = location.filename();
     let filename = filename.to_string_lossy();
-    let filename = filename.strip_prefix("\\\\?\\").unwrap();
+    let filename = if let Some(stripped) = filename.strip_prefix("\\\\?\\") {
+        stripped
+    } else {
+        &filename
+    };
 
     let report = Report::build(report_kind, filename, location.char_offset())
         .with_message(message.into())
