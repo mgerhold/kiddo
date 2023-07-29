@@ -1,0 +1,173 @@
+---
+source: src/test.rs
+expression: "setup_test(function_name!(),\n        TestFile {\n            filename: \"main.bs\",\n            source: r#\"function f() {\n    let a = 10;\n    let const b = 20;\n    let mutable c = 30;\n    let d: U32 = 40;\n    let const e: U32 = 50;\n    let mutable f: U32 = 60;\n}\n\"#,\n        }, &[]).compiler_output"
+---
+[
+    ModuleWithConnectedImports {
+        filename: "main.bs",
+        module: Module {
+            imports: [],
+            definitions: [
+                Function(
+                    FunctionDefinition {
+                        is_exported: false,
+                        name: NonTypeIdentifier(
+                            Token {
+                                source_location: "f" (main.bs:1:10, byte_offset=9),
+                                type_: LowercaseIdentifier,
+                            },
+                        ),
+                        parameters: [],
+                        return_type: None,
+                        body: Block {
+                            statements: [
+                                VariableDefinition(
+                                    LocalVariableDefinition {
+                                        mutability: Constant,
+                                        name: NonTypeIdentifier(
+                                            Token {
+                                                source_location: "a" (main.bs:2:9, byte_offset=23),
+                                                type_: LowercaseIdentifier,
+                                            },
+                                        ),
+                                        type_: None,
+                                        initial_value: IntegerLiteral(
+                                            Token {
+                                                source_location: "10" (main.bs:2:13, byte_offset=27),
+                                                type_: Integer,
+                                            },
+                                        ),
+                                    },
+                                ),
+                                VariableDefinition(
+                                    LocalVariableDefinition {
+                                        mutability: Constant,
+                                        name: NonTypeIdentifier(
+                                            Token {
+                                                source_location: "b" (main.bs:3:15, byte_offset=45),
+                                                type_: LowercaseIdentifier,
+                                            },
+                                        ),
+                                        type_: None,
+                                        initial_value: IntegerLiteral(
+                                            Token {
+                                                source_location: "20" (main.bs:3:19, byte_offset=49),
+                                                type_: Integer,
+                                            },
+                                        ),
+                                    },
+                                ),
+                                VariableDefinition(
+                                    LocalVariableDefinition {
+                                        mutability: Mutable,
+                                        name: NonTypeIdentifier(
+                                            Token {
+                                                source_location: "c" (main.bs:4:17, byte_offset=69),
+                                                type_: LowercaseIdentifier,
+                                            },
+                                        ),
+                                        type_: None,
+                                        initial_value: IntegerLiteral(
+                                            Token {
+                                                source_location: "30" (main.bs:4:21, byte_offset=73),
+                                                type_: Integer,
+                                            },
+                                        ),
+                                    },
+                                ),
+                                VariableDefinition(
+                                    LocalVariableDefinition {
+                                        mutability: Constant,
+                                        name: NonTypeIdentifier(
+                                            Token {
+                                                source_location: "d" (main.bs:5:9, byte_offset=85),
+                                                type_: LowercaseIdentifier,
+                                            },
+                                        ),
+                                        type_: Some(
+                                            Named {
+                                                name: Relative {
+                                                    tokens: [
+                                                        Token {
+                                                            source_location: "U32" (main.bs:5:12, byte_offset=88),
+                                                            type_: UppercaseIdentifier,
+                                                        },
+                                                    ],
+                                                },
+                                            },
+                                        ),
+                                        initial_value: IntegerLiteral(
+                                            Token {
+                                                source_location: "40" (main.bs:5:18, byte_offset=94),
+                                                type_: Integer,
+                                            },
+                                        ),
+                                    },
+                                ),
+                                VariableDefinition(
+                                    LocalVariableDefinition {
+                                        mutability: Constant,
+                                        name: NonTypeIdentifier(
+                                            Token {
+                                                source_location: "e" (main.bs:6:15, byte_offset=112),
+                                                type_: LowercaseIdentifier,
+                                            },
+                                        ),
+                                        type_: Some(
+                                            Named {
+                                                name: Relative {
+                                                    tokens: [
+                                                        Token {
+                                                            source_location: "U32" (main.bs:6:18, byte_offset=115),
+                                                            type_: UppercaseIdentifier,
+                                                        },
+                                                    ],
+                                                },
+                                            },
+                                        ),
+                                        initial_value: IntegerLiteral(
+                                            Token {
+                                                source_location: "50" (main.bs:6:24, byte_offset=121),
+                                                type_: Integer,
+                                            },
+                                        ),
+                                    },
+                                ),
+                                VariableDefinition(
+                                    LocalVariableDefinition {
+                                        mutability: Mutable,
+                                        name: NonTypeIdentifier(
+                                            Token {
+                                                source_location: "f" (main.bs:7:17, byte_offset=141),
+                                                type_: LowercaseIdentifier,
+                                            },
+                                        ),
+                                        type_: Some(
+                                            Named {
+                                                name: Relative {
+                                                    tokens: [
+                                                        Token {
+                                                            source_location: "U32" (main.bs:7:20, byte_offset=144),
+                                                            type_: UppercaseIdentifier,
+                                                        },
+                                                    ],
+                                                },
+                                            },
+                                        ),
+                                        initial_value: IntegerLiteral(
+                                            Token {
+                                                source_location: "60" (main.bs:7:26, byte_offset=150),
+                                                type_: Integer,
+                                            },
+                                        ),
+                                    },
+                                ),
+                            ],
+                        },
+                    },
+                ),
+            ],
+        },
+        imports: [],
+    },
+]

@@ -118,6 +118,7 @@ impl<'a> Import<'a> {
 pub enum Definition<'a> {
     Struct(StructDefinition<'a>),
     Function(FunctionDefinition<'a>),
+    GlobalVariable(GlobalVariableDefinition<'a>),
 }
 
 impl Definition<'_> {
@@ -125,6 +126,9 @@ impl Definition<'_> {
         match self {
             Definition::Struct(StructDefinition { is_exported, .. }) => *is_exported,
             Definition::Function(FunctionDefinition { is_exported, .. }) => *is_exported,
+            Definition::GlobalVariable(GlobalVariableDefinition { is_exported, .. }) => {
+                *is_exported
+            }
         }
     }
 
@@ -132,6 +136,9 @@ impl Definition<'_> {
         match self {
             Definition::Struct(StructDefinition { name, .. }) => Identifier::TypeIdentifier(*name),
             Definition::Function(FunctionDefinition { name, .. }) => {
+                Identifier::NonTypeIdentifier(*name)
+            }
+            Definition::GlobalVariable(GlobalVariableDefinition { name, .. }) => {
                 Identifier::NonTypeIdentifier(*name)
             }
         }
@@ -158,6 +165,23 @@ pub struct FunctionDefinition<'a> {
 pub(crate) struct FunctionParameter<'a> {
     pub(crate) name: Identifier<'a>,
     pub(crate) type_: DataType<'a>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct GlobalVariableDefinition<'a> {
+    pub(crate) is_exported: bool,
+    pub(crate) mutability: Mutability,
+    pub(crate) name: NonTypeIdentifier<'a>,
+    pub(crate) type_: Option<DataType<'a>>,
+    pub(crate) initial_value: Expression<'a>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct LocalVariableDefinition<'a> {
+    pub(crate) mutability: Mutability,
+    pub(crate) name: NonTypeIdentifier<'a>,
+    pub(crate) type_: Option<DataType<'a>>,
+    pub(crate) initial_value: Expression<'a>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -213,6 +237,7 @@ pub(crate) enum Statement<'a> {
     ExpressionStatement(Expression<'a>),
     Yield(Expression<'a>),
     Return(Option<Expression<'a>>),
+    VariableDefinition(LocalVariableDefinition<'a>),
 }
 
 #[derive(Debug, Clone, Copy)]
