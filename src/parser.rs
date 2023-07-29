@@ -5,9 +5,10 @@ use bumpalo::Bump;
 use crate::lexer::tokenize;
 use crate::parser::errors::{ErrorReport, ParserError};
 use crate::parser::ir_parsed::{
-    Block, DataType, Definition, Expression, FunctionDefinition, FunctionParameter, Identifier,
-    Import, Module, Mutability, NonTypeIdentifier, QualifiedName, QualifiedNonTypeName,
-    QualifiedTypeName, Statement, StructDefinition, StructMember, TypeIdentifier,
+    Block, DataType, Definition, Expression, FunctionDefinition, FunctionParameter,
+    GlobalVariableDefinition, Identifier, Import, LocalVariableDefinition, Module, Mutability,
+    NonTypeIdentifier, QualifiedName, QualifiedNonTypeName, QualifiedTypeName, Statement,
+    StructDefinition, StructMember, TypeIdentifier,
 };
 use crate::token::{Token, TokenType};
 use crate::utils::parse_unsigned_int;
@@ -181,7 +182,8 @@ impl<'a> ParserState<'a> {
             let is_exported = self.consume(TokenType::Export).is_some();
 
             let is_valid_definition_start =
-                [TokenType::Struct, TokenType::Function].contains(&self.current().type_);
+                [TokenType::Struct, TokenType::Function, TokenType::Let]
+                    .contains(&self.current().type_);
 
             match (is_exported, is_valid_definition_start) {
                 (false, false) => break,
@@ -196,6 +198,9 @@ impl<'a> ParserState<'a> {
         match self.current().type_ {
             TokenType::Struct => Ok(Definition::Struct(self.struct_definition(is_exported)?)),
             TokenType::Function => Ok(Definition::Function(self.function_definition(is_exported)?)),
+            TokenType::Let => Ok(Definition::GlobalVariable(
+                self.global_variable_definition(is_exported)?,
+            )),
             _ => Err(ParserError::TokenTypeMismatch {
                 expected: &[TokenType::Struct, TokenType::Function],
                 actual: self.current(),
@@ -304,6 +309,55 @@ impl<'a> ParserState<'a> {
             parameters: self.bump_allocator.alloc_slice_copy(&parameters),
             return_type,
             body,
+        })
+    }
+
+    fn global_variable_definition(
+        &mut self,
+        is_exported: bool,
+    ) -> Result<GlobalVariableDefinition<'a>, ParserError<'a>> {
+        /*
+        GlobalVariableDefinition:
+            (definition=LocalVariableDefinition)
+         */
+        let definition = self.local_variable_definition()?;
+        Ok(GlobalVariableDefinition {
+            is_exported,
+            mutability: definition.mutability,
+            name: definition.name,
+            type_: definition.type_,
+            initial_value: definition.initial_value,
+        })
+    }
+
+    fn local_variable_definition(
+        &mut self,
+    ) -> Result<LocalVariableDefinition<'a>, ParserError<'a>> {
+        /*
+        LocalVariableDefinition:
+            'let' (mutability=Mutability) (name=NonTypeIdentifier) [':' type=DataType]? '=' (value=Expression) ';'
+         */
+        self.expect(TokenType::Let)?;
+        let mutability = if self.consume(TokenType::Mutable).is_some() {
+            Mutability::Mutable
+        } else {
+            self.consume(TokenType::Const);
+            Mutability::Constant
+        };
+        let name = self.non_type_identifier()?;
+        let type_ = if self.consume(TokenType::Colon).is_some() {
+            Some(self.data_type()?)
+        } else {
+            None
+        };
+        self.expect(TokenType::Equals)?;
+        let initial_value = self.expression()?;
+        self.expect(TokenType::Semicolon)?;
+        Ok(LocalVariableDefinition {
+            mutability,
+            name,
+            type_,
+            initial_value,
         })
     }
 
