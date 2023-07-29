@@ -237,6 +237,7 @@ pub(crate) enum Statement<'a> {
     ExpressionStatement(Expression<'a>),
     Yield(Expression<'a>),
     Return(Option<Expression<'a>>),
+    VariableDefinition(LocalVariableDefinition<'a>),
 }
 
 #[derive(Debug, Clone, Copy)]

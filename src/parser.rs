@@ -419,6 +419,9 @@ impl<'a> ParserState<'a> {
         match self.current().type_ {
             TokenType::Yield => self.yield_statement(),
             TokenType::Return => self.return_statement(),
+            TokenType::Let => Ok(Statement::VariableDefinition(
+                self.local_variable_definition()?,
+            )),
             _ => self.expression_statement(),
         }
     }

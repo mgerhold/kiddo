@@ -1,0 +1,309 @@
+---
+source: src/test.rs
+expression: "setup_test(function_name!(),\n        TestFile {\n            filename: \"main.bs\",\n            source: r#\"let global0 = 42;\nlet global1: U32 = 42;\nlet mutable global2 = 42;\nlet mutable global3: U32 = 42;\nlet const global4 = 42;\nlet const global5: U32 = 42;\n\nexport let global6 = 42;\nexport let global7: U32 = 42;\nexport let mutable global8 = 42;\nexport let mutable global9: U32 = 42;\nexport let const global10 = 42;\nexport let const global11: U32 = 42;\n\"#,\n        }, &[]).compiler_output"
+---
+[
+    ModuleWithConnectedImports {
+        filename: "main.bs",
+        module: Module {
+            imports: [],
+            definitions: [
+                GlobalVariable(
+                    GlobalVariableDefinition {
+                        is_exported: false,
+                        mutability: Constant,
+                        name: NonTypeIdentifier(
+                            Token {
+                                source_location: "global0" (main.bs:1:5, byte_offset=4),
+                                type_: LowercaseIdentifier,
+                            },
+                        ),
+                        type_: None,
+                        initial_value: IntegerLiteral(
+                            Token {
+                                source_location: "42" (main.bs:1:15, byte_offset=14),
+                                type_: Integer,
+                            },
+                        ),
+                    },
+                ),
+                GlobalVariable(
+                    GlobalVariableDefinition {
+                        is_exported: false,
+                        mutability: Constant,
+                        name: NonTypeIdentifier(
+                            Token {
+                                source_location: "global1" (main.bs:2:5, byte_offset=22),
+                                type_: LowercaseIdentifier,
+                            },
+                        ),
+                        type_: Some(
+                            Named {
+                                name: Relative {
+                                    tokens: [
+                                        Token {
+                                            source_location: "U32" (main.bs:2:14, byte_offset=31),
+                                            type_: UppercaseIdentifier,
+                                        },
+                                    ],
+                                },
+                            },
+                        ),
+                        initial_value: IntegerLiteral(
+                            Token {
+                                source_location: "42" (main.bs:2:20, byte_offset=37),
+                                type_: Integer,
+                            },
+                        ),
+                    },
+                ),
+                GlobalVariable(
+                    GlobalVariableDefinition {
+                        is_exported: false,
+                        mutability: Mutable,
+                        name: NonTypeIdentifier(
+                            Token {
+                                source_location: "global2" (main.bs:3:13, byte_offset=53),
+                                type_: LowercaseIdentifier,
+                            },
+                        ),
+                        type_: None,
+                        initial_value: IntegerLiteral(
+                            Token {
+                                source_location: "42" (main.bs:3:23, byte_offset=63),
+                                type_: Integer,
+                            },
+                        ),
+                    },
+                ),
+                GlobalVariable(
+                    GlobalVariableDefinition {
+                        is_exported: false,
+                        mutability: Mutable,
+                        name: NonTypeIdentifier(
+                            Token {
+                                source_location: "global3" (main.bs:4:13, byte_offset=79),
+                                type_: LowercaseIdentifier,
+                            },
+                        ),
+                        type_: Some(
+                            Named {
+                                name: Relative {
+                                    tokens: [
+                                        Token {
+                                            source_location: "U32" (main.bs:4:22, byte_offset=88),
+                                            type_: UppercaseIdentifier,
+                                        },
+                                    ],
+                                },
+                            },
+                        ),
+                        initial_value: IntegerLiteral(
+                            Token {
+                                source_location: "42" (main.bs:4:28, byte_offset=94),
+                                type_: Integer,
+                            },
+                        ),
+                    },
+                ),
+                GlobalVariable(
+                    GlobalVariableDefinition {
+                        is_exported: false,
+                        mutability: Constant,
+                        name: NonTypeIdentifier(
+                            Token {
+                                source_location: "global4" (main.bs:5:11, byte_offset=108),
+                                type_: LowercaseIdentifier,
+                            },
+                        ),
+                        type_: None,
+                        initial_value: IntegerLiteral(
+                            Token {
+                                source_location: "42" (main.bs:5:21, byte_offset=118),
+                                type_: Integer,
+                            },
+                        ),
+                    },
+                ),
+                GlobalVariable(
+                    GlobalVariableDefinition {
+                        is_exported: false,
+                        mutability: Constant,
+                        name: NonTypeIdentifier(
+                            Token {
+                                source_location: "global5" (main.bs:6:11, byte_offset=132),
+                                type_: LowercaseIdentifier,
+                            },
+                        ),
+                        type_: Some(
+                            Named {
+                                name: Relative {
+                                    tokens: [
+                                        Token {
+                                            source_location: "U32" (main.bs:6:20, byte_offset=141),
+                                            type_: UppercaseIdentifier,
+                                        },
+                                    ],
+                                },
+                            },
+                        ),
+                        initial_value: IntegerLiteral(
+                            Token {
+                                source_location: "42" (main.bs:6:26, byte_offset=147),
+                                type_: Integer,
+                            },
+                        ),
+                    },
+                ),
+                GlobalVariable(
+                    GlobalVariableDefinition {
+                        is_exported: true,
+                        mutability: Constant,
+                        name: NonTypeIdentifier(
+                            Token {
+                                source_location: "global6" (main.bs:8:12, byte_offset=163),
+                                type_: LowercaseIdentifier,
+                            },
+                        ),
+                        type_: None,
+                        initial_value: IntegerLiteral(
+                            Token {
+                                source_location: "42" (main.bs:8:22, byte_offset=173),
+                                type_: Integer,
+                            },
+                        ),
+                    },
+                ),
+                GlobalVariable(
+                    GlobalVariableDefinition {
+                        is_exported: true,
+                        mutability: Constant,
+                        name: NonTypeIdentifier(
+                            Token {
+                                source_location: "global7" (main.bs:9:12, byte_offset=188),
+                                type_: LowercaseIdentifier,
+                            },
+                        ),
+                        type_: Some(
+                            Named {
+                                name: Relative {
+                                    tokens: [
+                                        Token {
+                                            source_location: "U32" (main.bs:9:21, byte_offset=197),
+                                            type_: UppercaseIdentifier,
+                                        },
+                                    ],
+                                },
+                            },
+                        ),
+                        initial_value: IntegerLiteral(
+                            Token {
+                                source_location: "42" (main.bs:9:27, byte_offset=203),
+                                type_: Integer,
+                            },
+                        ),
+                    },
+                ),
+                GlobalVariable(
+                    GlobalVariableDefinition {
+                        is_exported: true,
+                        mutability: Mutable,
+                        name: NonTypeIdentifier(
+                            Token {
+                                source_location: "global8" (main.bs:10:20, byte_offset=226),
+                                type_: LowercaseIdentifier,
+                            },
+                        ),
+                        type_: None,
+                        initial_value: IntegerLiteral(
+                            Token {
+                                source_location: "42" (main.bs:10:30, byte_offset=236),
+                                type_: Integer,
+                            },
+                        ),
+                    },
+                ),
+                GlobalVariable(
+                    GlobalVariableDefinition {
+                        is_exported: true,
+                        mutability: Mutable,
+                        name: NonTypeIdentifier(
+                            Token {
+                                source_location: "global9" (main.bs:11:20, byte_offset=259),
+                                type_: LowercaseIdentifier,
+                            },
+                        ),
+                        type_: Some(
+                            Named {
+                                name: Relative {
+                                    tokens: [
+                                        Token {
+                                            source_location: "U32" (main.bs:11:29, byte_offset=268),
+                                            type_: UppercaseIdentifier,
+                                        },
+                                    ],
+                                },
+                            },
+                        ),
+                        initial_value: IntegerLiteral(
+                            Token {
+                                source_location: "42" (main.bs:11:35, byte_offset=274),
+                                type_: Integer,
+                            },
+                        ),
+                    },
+                ),
+                GlobalVariable(
+                    GlobalVariableDefinition {
+                        is_exported: true,
+                        mutability: Constant,
+                        name: NonTypeIdentifier(
+                            Token {
+                                source_location: "global10" (main.bs:12:18, byte_offset=295),
+                                type_: LowercaseIdentifier,
+                            },
+                        ),
+                        type_: None,
+                        initial_value: IntegerLiteral(
+                            Token {
+                                source_location: "42" (main.bs:12:29, byte_offset=306),
+                                type_: Integer,
+                            },
+                        ),
+                    },
+                ),
+                GlobalVariable(
+                    GlobalVariableDefinition {
+                        is_exported: true,
+                        mutability: Constant,
+                        name: NonTypeIdentifier(
+                            Token {
+                                source_location: "global11" (main.bs:13:18, byte_offset=327),
+                                type_: LowercaseIdentifier,
+                            },
+                        ),
+                        type_: Some(
+                            Named {
+                                name: Relative {
+                                    tokens: [
+                                        Token {
+                                            source_location: "U32" (main.bs:13:28, byte_offset=337),
+                                            type_: UppercaseIdentifier,
+                                        },
+                                    ],
+                                },
+                            },
+                        ),
+                        initial_value: IntegerLiteral(
+                            Token {
+                                source_location: "42" (main.bs:13:34, byte_offset=343),
+                                type_: Integer,
+                            },
+                        ),
+                    },
+                ),
+            ],
+        },
+        imports: [],
+    },
+]
