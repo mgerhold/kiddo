@@ -23,7 +23,7 @@ use crate::token::TokenType;
 use crate::utils::AllocPath;
 
 pub(crate) mod errors;
-mod representations;
+pub(crate) mod representations;
 
 fn find_path(relative_path: &Path, possible_roots: &[&Path]) -> Option<PathBuf> {
     possible_roots
@@ -372,7 +372,8 @@ fn check_imports_for_module<'a>(
     Ok(ModuleWithConnectedImports {
         canonical_path: module_with_resolved_imports_and_exports.canonical_path,
         module: module_with_resolved_imports_and_exports.module,
-        imports: connected_imports,
+        resolved_imports: module_with_resolved_imports_and_exports.imports,
+        connected_imports,
     })
 }
 

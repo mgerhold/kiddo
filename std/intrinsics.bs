@@ -1,2 +1,20 @@
 // [[intrinsic(never), author(coder2k), stdlib]]
 export struct Never {}
+
+// [[intrinsic(u32)]]
+export struct U32 {}
+
+/*[[intrinsic(u32_binary_plus)]]
+export operator+(lhs: U32, rhs: U32) ~> U32 {
+    loop {}
+}*/
+
+//[[intrinsic(u32_binary_minus)]]
+//export operator-(lhs: U32, rhs: U32) ~> U32 {
+//    loop {}
+//}
+
+//[[intrinsic(u32_unary_minus)]]
+//export operator-(value: U32) ~> U32 {
+//    loop {}
+//}

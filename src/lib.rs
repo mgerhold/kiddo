@@ -6,6 +6,7 @@ use bumpalo::Bump;
 pub use crate::command_line_arguments::CommandLineArguments;
 use crate::helpers::{gather_import_directories, get_canonical_path_to_main_module};
 use crate::import_resolution::{find_imports, perform_import_resolution, ModuleWithImports};
+use crate::name_lookup::perform_name_lookup;
 use crate::parser::errors::ErrorReport;
 use crate::parser::parse_module;
 use crate::utils::AllocPath;
@@ -15,6 +16,7 @@ mod constants;
 mod helpers;
 mod import_resolution;
 mod lexer;
+mod name_lookup;
 mod parser;
 mod token;
 mod utils;
@@ -65,6 +67,8 @@ pub fn main<'a>(
         let ast = format!("{:#?}", &all_modules);
         std::fs::write(ast_output_path, ast).unwrap();
     }
+
+    let after_lookup = perform_name_lookup(all_modules, bump_allocator)?;
 
     // dbg!(all_modules);
 

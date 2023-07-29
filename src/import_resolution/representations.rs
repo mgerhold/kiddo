@@ -49,7 +49,8 @@ pub struct ConnectedImport<'a> {
 pub struct ModuleWithConnectedImports<'a> {
     pub(crate) canonical_path: &'a Path,
     pub(crate) module: Module<'a>,
-    pub(crate) imports: &'a [ConnectedImport<'a>],
+    pub(crate) resolved_imports: &'a [ResolvedImport<'a>],
+    pub(crate) connected_imports: &'a [ConnectedImport<'a>],
 }
 
 impl Debug for ModuleWithConnectedImports<'_> {
@@ -60,7 +61,7 @@ impl Debug for ModuleWithConnectedImports<'_> {
                 &self.canonical_path.file_name().unwrap().to_string_lossy(),
             )
             .field("module", &self.module)
-            .field("imports", &self.imports)
+            .field("imports", &self.connected_imports)
             .finish()
     }
 }

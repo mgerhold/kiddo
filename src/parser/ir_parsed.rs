@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 
+use bumpalo::Bump;
+
 use crate::constants::BackseatSize;
 use crate::token::{SourceLocation, Token, TokenType};
 
@@ -163,7 +165,7 @@ pub struct FunctionDefinition<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct FunctionParameter<'a> {
-    pub(crate) name: Identifier<'a>,
+    pub(crate) name: NonTypeIdentifier<'a>,
     pub(crate) type_: DataType<'a>,
 }
 
@@ -211,7 +213,7 @@ pub(crate) enum DataType<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct StructMember<'a> {
-    pub(crate) name: Identifier<'a>,
+    pub(crate) name: NonTypeIdentifier<'a>,
     pub(crate) type_: DataType<'a>,
 }
 
@@ -221,14 +223,20 @@ pub(crate) struct Block<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub(crate) enum Literal<'a> {
+    Integer(Token<'a>),
+}
+
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum Expression<'a> {
-    IntegerLiteral(Token<'a>),
+    Literal(Literal<'a>),
     BinaryOperator {
         lhs: &'a Expression<'a>,
         operator: Token<'a>,
         rhs: &'a Expression<'a>,
     },
     Block(Block<'a>),
+    Name(QualifiedNonTypeName<'a>),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -394,6 +402,18 @@ impl<'a> Identifier<'a> {
 
     pub(crate) fn as_string(&self) -> String {
         self.token().lexeme().to_string()
+    }
+
+    pub(crate) fn as_qualified_name(&self, bump_allocator: &'a Bump) -> QualifiedName<'a> {
+        let tokens = bump_allocator.alloc_slice_copy(&[self.token()]);
+        match self {
+            Identifier::TypeIdentifier(_) => {
+                QualifiedName::QualifiedTypeName(QualifiedTypeName::Relative { tokens })
+            }
+            Identifier::NonTypeIdentifier(_) => {
+                QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Relative { tokens })
+            }
+        }
     }
 }
 

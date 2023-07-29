@@ -6,9 +6,9 @@ use crate::lexer::tokenize;
 use crate::parser::errors::{ErrorReport, ParserError};
 use crate::parser::ir_parsed::{
     Block, DataType, Definition, Expression, FunctionDefinition, FunctionParameter,
-    GlobalVariableDefinition, Identifier, Import, LocalVariableDefinition, Module, Mutability,
-    NonTypeIdentifier, QualifiedName, QualifiedNonTypeName, QualifiedTypeName, Statement,
-    StructDefinition, StructMember, TypeIdentifier,
+    GlobalVariableDefinition, Identifier, Import, Literal, LocalVariableDefinition, Module,
+    Mutability, NonTypeIdentifier, QualifiedName, QualifiedNonTypeName, QualifiedTypeName,
+    Statement, StructDefinition, StructMember, TypeIdentifier,
 };
 use crate::token::{Token, TokenType};
 use crate::utils::parse_unsigned_int;
@@ -33,8 +33,8 @@ impl<'a> ParserState<'a> {
 
     fn current(&self) -> Token<'a> {
         match self.tokens.get(self.current_index) {
-            Some(token) => token.clone(),
-            None => self.tokens.last().expect("token list is not empty").clone(),
+            Some(token) => *token,
+            None => *self.tokens.last().expect("token list is not empty"),
         }
     }
 
@@ -245,7 +245,7 @@ impl<'a> ParserState<'a> {
             self.expect(TokenType::Colon)?;
             let type_ = self.data_type()?;
             members.push(StructMember {
-                name: Identifier::NonTypeIdentifier(NonTypeIdentifier(identifier_token)),
+                name: NonTypeIdentifier(identifier_token),
                 type_,
             });
             let comma_present = self.consume(TokenType::Comma).is_some();
@@ -389,7 +389,7 @@ impl<'a> ParserState<'a> {
         FunctionParameter:
             (name=NonTypeIdentifier) ':' (type=DataType)
          */
-        let name = self.identifier()?;
+        let name = self.non_type_identifier()?;
         self.expect(TokenType::Colon)?;
         let type_ = self.data_type()?;
 
@@ -491,19 +491,33 @@ impl<'a> ParserState<'a> {
         Ok(accumulator)
     }
 
+    fn literal(&mut self) -> Result<Literal<'a>, ParserError<'a>> {
+        if let Some(token) = self.consume(TokenType::Integer) {
+            return Ok(Literal::Integer(token));
+        }
+        unreachable!()
+    }
+
     fn primary(&mut self) -> Result<Expression<'a>, ParserError<'a>> {
-        if self.consume(TokenType::LeftParenthesis).is_some() {
-            let sub_expression = self.expression()?;
-            self.expect(TokenType::RightParenthesis)?;
-            Ok(sub_expression)
-        } else if let Token {
-            type_: TokenType::LeftCurlyBracket,
-            ..
-        } = self.current()
-        {
-            Ok(Expression::Block(self.block()?))
-        } else {
-            Ok(Expression::IntegerLiteral(self.expect(TokenType::Integer)?))
+        match self.current().type_ {
+            TokenType::LeftParenthesis => {
+                self.advance(1); // consume '('
+                let sub_expression = self.expression()?;
+                self.expect(TokenType::RightParenthesis)?;
+                Ok(sub_expression)
+            }
+            TokenType::LeftCurlyBracket => Ok(Expression::Block(self.block()?)),
+            TokenType::Integer => Ok(Expression::Literal(self.literal()?)),
+            TokenType::LowercaseIdentifier => Ok(Expression::Name(self.qualified_non_type_name()?)),
+            _ => Err(ParserError::TokenTypeMismatch {
+                expected: &[
+                    TokenType::LeftParenthesis,
+                    TokenType::LeftCurlyBracket,
+                    TokenType::Integer,
+                    TokenType::LowercaseIdentifier,
+                ],
+                actual: self.current(),
+            }),
         }
     }
 
