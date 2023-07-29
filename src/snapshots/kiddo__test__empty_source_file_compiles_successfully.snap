@@ -1,0 +1,14 @@
+---
+source: src/test.rs
+expression: "setup_test(function!(), TestFile { filename: \"main.bs\", source: \"\" },\n        &[]).compiler_output"
+---
+[
+    ModuleWithConnectedImports {
+        filename: "main.bs",
+        module: Module {
+            imports: [],
+            definitions: [],
+        },
+        imports: [],
+    },
+]

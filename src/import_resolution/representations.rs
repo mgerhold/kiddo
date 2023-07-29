@@ -1,3 +1,4 @@
+use std::fmt::{Debug, Formatter};
 use std::path::Path;
 
 use crate::parser::ir_parsed::{Definition, Import, Module};
@@ -44,9 +45,22 @@ pub struct ConnectedImport<'a> {
     pub(crate) definition: Definition<'a>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub struct ModuleWithConnectedImports<'a> {
     pub(crate) canonical_path: &'a Path,
     pub(crate) module: Module<'a>,
     pub(crate) imports: &'a [ConnectedImport<'a>],
+}
+
+impl Debug for ModuleWithConnectedImports<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ModuleWithConnectedImports")
+            .field(
+                "filename",
+                &self.canonical_path.file_name().unwrap().to_string_lossy(),
+            )
+            .field("module", &self.module)
+            .field("imports", &self.imports)
+            .finish()
+    }
 }

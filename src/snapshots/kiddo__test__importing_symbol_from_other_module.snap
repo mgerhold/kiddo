@@ -1,0 +1,99 @@
+---
+source: src/test.rs
+expression: "setup_test(function!(),\n        TestFile { filename: \"main.bs\", source: r#\"from utils import f;\n\"# },\n        &[TestFile {\n                        filename: \"utils.bs\",\n                        source: r#\"export function f() { }\n\"#,\n                    }]).compiler_output"
+---
+[
+    ModuleWithConnectedImports {
+        filename: "main.bs",
+        module: Module {
+            imports: [
+                FromImport {
+                    where_: QualifiedNonTypeName(
+                        Relative {
+                            tokens: [
+                                Token {
+                                    source_location: "utils" (main.bs:1:6, byte_offset=5),
+                                    type_: LowercaseIdentifier,
+                                },
+                            ],
+                        },
+                    ),
+                    symbol: NonTypeIdentifier(
+                        NonTypeIdentifier(
+                            Token {
+                                source_location: "f" (main.bs:1:19, byte_offset=18),
+                                type_: LowercaseIdentifier,
+                            },
+                        ),
+                    ),
+                },
+            ],
+            definitions: [],
+        },
+        imports: [
+            ConnectedImport {
+                import: FromImport {
+                    where_: QualifiedNonTypeName(
+                        Relative {
+                            tokens: [
+                                Token {
+                                    source_location: "utils" (main.bs:1:6, byte_offset=5),
+                                    type_: LowercaseIdentifier,
+                                },
+                            ],
+                        },
+                    ),
+                    symbol: NonTypeIdentifier(
+                        NonTypeIdentifier(
+                            Token {
+                                source_location: "f" (main.bs:1:19, byte_offset=18),
+                                type_: LowercaseIdentifier,
+                            },
+                        ),
+                    ),
+                },
+                definition: Function(
+                    FunctionDefinition {
+                        is_exported: true,
+                        name: NonTypeIdentifier(
+                            Token {
+                                source_location: "f" (utils.bs:1:17, byte_offset=16),
+                                type_: LowercaseIdentifier,
+                            },
+                        ),
+                        parameters: [],
+                        return_type: None,
+                        body: Block {
+                            statements: [],
+                        },
+                    },
+                ),
+            },
+        ],
+    },
+    ModuleWithConnectedImports {
+        filename: "utils.bs",
+        module: Module {
+            imports: [],
+            definitions: [
+                Function(
+                    FunctionDefinition {
+                        is_exported: true,
+                        name: NonTypeIdentifier(
+                            Token {
+                                source_location: "f" (utils.bs:1:17, byte_offset=16),
+                                type_: LowercaseIdentifier,
+                            },
+                        ),
+                        parameters: [],
+                        return_type: None,
+                        body: Block {
+                            statements: [],
+                        },
+                    },
+                ),
+            ],
+        },
+        imports: [],
+    },
+]

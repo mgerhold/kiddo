@@ -1,0 +1,26 @@
+---
+source: src/test.rs
+expression: "setup_test(TestFile {\n            filename: \"main.bs\",\n            source: r#\"from main import f;\n\nexport function f() { }\n\"#,\n        }, &[]).compiler_output"
+---
+Report {
+    kind: Custom(
+        "Note",
+        Blue,
+    ),
+    code: None,
+    msg: Some(
+        "module-local definition with the same name prevents import",
+    ),
+    note: None,
+    help: None,
+    config: Config {
+        cross_gap: true,
+        label_attach: Middle,
+        compact: false,
+        underlines: true,
+        multiline_arrows: true,
+        color: true,
+        tab_width: 4,
+        char_set: Unicode,
+    },
+}
