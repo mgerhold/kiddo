@@ -21,19 +21,13 @@ fn get_path(parent_directory_name: &str, filename: &str) -> PathBuf {
 
 fn write_test_file(parent_directory_name: &str, file: TestFile) {
     let path = get_path(parent_directory_name, file.filename);
-    eprintln!("writing file {}", path.display());
     std::fs::write(&path, file.source).unwrap();
 }
 
 fn delete_test_file(parent_directory_name: &str, file: TestFile) {
     let path = get_path(parent_directory_name, file.filename);
-    match std::fs::remove_file(&path) {
-        Ok(_) => {
-            eprintln!("removed file {}", path.display())
-        }
-        Err(_) => {
-            eprintln!("failed to remove file {}", path.display())
-        }
+    if std::fs::remove_file(&path).is_err() {
+        eprintln!("failed to remove file {}", path.display())
     }
 }
 

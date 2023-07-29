@@ -206,8 +206,6 @@ fn find_all_imports<'a>(
     import_directories: &[&Path],
     bump_allocator: &'a Bump,
 ) -> Result<ModulesWithImports<'a>, Box<dyn ErrorReport + 'a>> {
-    println!("main module is {}", main_module.canonical_path.display());
-
     let mut processed_files = HashSet::new();
     processed_files.insert(main_module.canonical_path.deref().to_owned());
 
