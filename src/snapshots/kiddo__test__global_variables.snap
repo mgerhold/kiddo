@@ -19,11 +19,13 @@ expression: "setup_test(function_name!(),\n        TestFile {\n            filen
                             },
                         ),
                         type_: None,
-                        initial_value: IntegerLiteral(
-                            Token {
-                                source_location: "42" (main.bs:1:15, byte_offset=14),
-                                type_: Integer,
-                            },
+                        initial_value: Literal(
+                            Integer(
+                                Token {
+                                    source_location: "42" (main.bs:1:15, byte_offset=14),
+                                    type_: Integer,
+                                },
+                            ),
                         ),
                     },
                 ),
@@ -49,11 +51,13 @@ expression: "setup_test(function_name!(),\n        TestFile {\n            filen
                                 },
                             },
                         ),
-                        initial_value: IntegerLiteral(
-                            Token {
-                                source_location: "42" (main.bs:2:20, byte_offset=37),
-                                type_: Integer,
-                            },
+                        initial_value: Literal(
+                            Integer(
+                                Token {
+                                    source_location: "42" (main.bs:2:20, byte_offset=37),
+                                    type_: Integer,
+                                },
+                            ),
                         ),
                     },
                 ),
@@ -68,11 +72,13 @@ expression: "setup_test(function_name!(),\n        TestFile {\n            filen
                             },
                         ),
                         type_: None,
-                        initial_value: IntegerLiteral(
-                            Token {
-                                source_location: "42" (main.bs:3:23, byte_offset=63),
-                                type_: Integer,
-                            },
+                        initial_value: Literal(
+                            Integer(
+                                Token {
+                                    source_location: "42" (main.bs:3:23, byte_offset=63),
+                                    type_: Integer,
+                                },
+                            ),
                         ),
                     },
                 ),
@@ -98,11 +104,13 @@ expression: "setup_test(function_name!(),\n        TestFile {\n            filen
                                 },
                             },
                         ),
-                        initial_value: IntegerLiteral(
-                            Token {
-                                source_location: "42" (main.bs:4:28, byte_offset=94),
-                                type_: Integer,
-                            },
+                        initial_value: Literal(
+                            Integer(
+                                Token {
+                                    source_location: "42" (main.bs:4:28, byte_offset=94),
+                                    type_: Integer,
+                                },
+                            ),
                         ),
                     },
                 ),
@@ -117,11 +125,13 @@ expression: "setup_test(function_name!(),\n        TestFile {\n            filen
                             },
                         ),
                         type_: None,
-                        initial_value: IntegerLiteral(
-                            Token {
-                                source_location: "42" (main.bs:5:21, byte_offset=118),
-                                type_: Integer,
-                            },
+                        initial_value: Literal(
+                            Integer(
+                                Token {
+                                    source_location: "42" (main.bs:5:21, byte_offset=118),
+                                    type_: Integer,
+                                },
+                            ),
                         ),
                     },
                 ),
@@ -147,11 +157,13 @@ expression: "setup_test(function_name!(),\n        TestFile {\n            filen
                                 },
                             },
                         ),
-                        initial_value: IntegerLiteral(
-                            Token {
-                                source_location: "42" (main.bs:6:26, byte_offset=147),
-                                type_: Integer,
-                            },
+                        initial_value: Literal(
+                            Integer(
+                                Token {
+                                    source_location: "42" (main.bs:6:26, byte_offset=147),
+                                    type_: Integer,
+                                },
+                            ),
                         ),
                     },
                 ),
@@ -166,11 +178,13 @@ expression: "setup_test(function_name!(),\n        TestFile {\n            filen
                             },
                         ),
                         type_: None,
-                        initial_value: IntegerLiteral(
-                            Token {
-                                source_location: "42" (main.bs:8:22, byte_offset=173),
-                                type_: Integer,
-                            },
+                        initial_value: Literal(
+                            Integer(
+                                Token {
+                                    source_location: "42" (main.bs:8:22, byte_offset=173),
+                                    type_: Integer,
+                                },
+                            ),
                         ),
                     },
                 ),
@@ -196,11 +210,13 @@ expression: "setup_test(function_name!(),\n        TestFile {\n            filen
                                 },
                             },
                         ),
-                        initial_value: IntegerLiteral(
-                            Token {
-                                source_location: "42" (main.bs:9:27, byte_offset=203),
-                                type_: Integer,
-                            },
+                        initial_value: Literal(
+                            Integer(
+                                Token {
+                                    source_location: "42" (main.bs:9:27, byte_offset=203),
+                                    type_: Integer,
+                                },
+                            ),
                         ),
                     },
                 ),
@@ -215,11 +231,13 @@ expression: "setup_test(function_name!(),\n        TestFile {\n            filen
                             },
                         ),
                         type_: None,
-                        initial_value: IntegerLiteral(
-                            Token {
-                                source_location: "42" (main.bs:10:30, byte_offset=236),
-                                type_: Integer,
-                            },
+                        initial_value: Literal(
+                            Integer(
+                                Token {
+                                    source_location: "42" (main.bs:10:30, byte_offset=236),
+                                    type_: Integer,
+                                },
+                            ),
                         ),
                     },
                 ),
@@ -245,11 +263,13 @@ expression: "setup_test(function_name!(),\n        TestFile {\n            filen
                                 },
                             },
                         ),
-                        initial_value: IntegerLiteral(
-                            Token {
-                                source_location: "42" (main.bs:11:35, byte_offset=274),
-                                type_: Integer,
-                            },
+                        initial_value: Literal(
+                            Integer(
+                                Token {
+                                    source_location: "42" (main.bs:11:35, byte_offset=274),
+                                    type_: Integer,
+                                },
+                            ),
                         ),
                     },
                 ),
@@ -264,11 +284,13 @@ expression: "setup_test(function_name!(),\n        TestFile {\n            filen
                             },
                         ),
                         type_: None,
-                        initial_value: IntegerLiteral(
-                            Token {
-                                source_location: "42" (main.bs:12:29, byte_offset=306),
-                                type_: Integer,
-                            },
+                        initial_value: Literal(
+                            Integer(
+                                Token {
+                                    source_location: "42" (main.bs:12:29, byte_offset=306),
+                                    type_: Integer,
+                                },
+                            ),
                         ),
                     },
                 ),
@@ -294,11 +316,13 @@ expression: "setup_test(function_name!(),\n        TestFile {\n            filen
                                 },
                             },
                         ),
-                        initial_value: IntegerLiteral(
-                            Token {
-                                source_location: "42" (main.bs:13:34, byte_offset=343),
-                                type_: Integer,
-                            },
+                        initial_value: Literal(
+                            Integer(
+                                Token {
+                                    source_location: "42" (main.bs:13:34, byte_offset=343),
+                                    type_: Integer,
+                                },
+                            ),
                         ),
                     },
                 ),
