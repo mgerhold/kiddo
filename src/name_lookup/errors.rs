@@ -1,14 +1,24 @@
 use std::path::Path;
 
-use crate::parser::errors::ErrorReport;
+use crate::parser::errors::{print_error, ErrorReport};
+use crate::parser::ir_parsed::TokenSlice;
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum NameLookupError<'a> {
-    SomeErrorToRemoveLater(&'a str),
+    CouldNotResolveName(TokenSlice<'a>),
 }
 
 impl ErrorReport for NameLookupError<'_> {
     fn print_report(&self, output_filename: Option<&Path>) {
-        todo!()
+        match self {
+            NameLookupError::CouldNotResolveName(token_slice) => {
+                print_error(
+                    &token_slice.source_location(),
+                    "undefined reference",
+                    "this name could not be resolved",
+                    output_filename,
+                );
+            }
+        }
     }
 }

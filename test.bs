@@ -7,9 +7,13 @@ import std::containers::list as list;
 import std::containers::list as l;
 import ::std::containers::list;
 from ::std::intrinsics import Never;
+from ::std::intrinsics import Nothing;
+from ::std::intrinsics import U8;
+from ::std::intrinsics import U32;
+import ::std::string;
 import test;
 
-let global0 = 0 + 3;
+let global0 = global1;
 let global1: U32 = 42;
 let mutable global2 = 42;
 let mutable global3: U32 = 42;

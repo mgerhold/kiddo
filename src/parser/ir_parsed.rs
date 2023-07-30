@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter};
+use std::ops::Deref;
 use std::path::PathBuf;
 
 use bumpalo::Bump;
@@ -43,7 +45,7 @@ impl PartialEq for QualifiedNameOrIdentifier<'_> {
 impl<'a> QualifiedNameOrIdentifier<'a> {
     pub(crate) fn as_string(&self) -> String {
         match self {
-            QualifiedNameOrIdentifier::QualifiedName(qualified_name) => qualified_name.as_string(),
+            QualifiedNameOrIdentifier::QualifiedName(qualified_name) => qualified_name.to_string(),
             QualifiedNameOrIdentifier::Identifier(identifier) => identifier.as_string(),
         }
     }
@@ -193,22 +195,91 @@ pub(crate) enum Mutability {
 }
 
 #[derive(Debug, Clone, Copy)]
+pub(crate) struct TypeListElement<'a> {
+    pub(crate) data_type: DataType<'a>,
+    pub(crate) comma_token: Option<Token<'a>>,
+}
+
+#[derive(Debug, Clone, Copy)]
 pub(crate) enum DataType<'a> {
     Named {
         name: QualifiedTypeName<'a>,
     },
     Pointer {
+        arrow_token: Token<'a>,
         mutability: Mutability,
         pointee_type: &'a DataType<'a>,
     },
     Array {
+        left_square_bracket_token: Token<'a>,
         contained_type: &'a DataType<'a>,
+        semicolon_token: Token<'a>,
         size: BackseatSize,
+        size_token: Token<'a>,
+        right_square_bracket_token: Token<'a>,
     },
     FunctionPointer {
-        parameter_types: &'a [DataType<'a>],
+        function_keyword_token: Token<'a>,
+        left_parenthesis_token: Token<'a>,
+        parameter_list: &'a [TypeListElement<'a>],
+        right_parenthesis_token: Token<'a>,
+        tilde_arrow_token: Token<'a>,
         return_type: &'a DataType<'a>,
     },
+}
+
+impl<'a> DataType<'a> {
+    pub(crate) fn tokens(&self, bump_allocator: &'a Bump) -> TokenSlice<'a> {
+        match self {
+            DataType::Named { name } => name.tokens(),
+            DataType::Pointer {
+                arrow_token,
+                pointee_type,
+                ..
+            } => {
+                let mut tokens = vec![*arrow_token];
+                let pointee_tokens = pointee_type.tokens(bump_allocator);
+                tokens.extend_from_slice(&*pointee_tokens);
+                TokenSlice(bump_allocator.alloc_slice_copy(&tokens))
+            }
+            DataType::Array {
+                left_square_bracket_token,
+                contained_type,
+                semicolon_token,
+                size_token,
+                right_square_bracket_token,
+                ..
+            } => {
+                let mut tokens = vec![*left_square_bracket_token];
+                let contained_tokens = contained_type.tokens(bump_allocator);
+                tokens.extend_from_slice(&*contained_tokens);
+                tokens.push(*semicolon_token);
+                tokens.push(*size_token);
+                tokens.push(*right_square_bracket_token);
+                TokenSlice(bump_allocator.alloc_slice_copy(&tokens))
+            }
+            DataType::FunctionPointer {
+                function_keyword_token,
+                left_parenthesis_token,
+                parameter_list,
+                right_parenthesis_token,
+                tilde_arrow_token,
+                return_type,
+            } => {
+                let mut tokens = vec![*function_keyword_token, *left_parenthesis_token];
+                for element in *parameter_list {
+                    tokens.extend_from_slice(&element.data_type.tokens(bump_allocator));
+                    if let Some(comma_token) = element.comma_token {
+                        tokens.push(comma_token);
+                    }
+                }
+                tokens.push(*right_parenthesis_token);
+                tokens.push(*tilde_arrow_token);
+                tokens.extend_from_slice(&return_type.tokens(bump_allocator));
+                TokenSlice(bump_allocator.alloc_slice_copy(&tokens))
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -255,11 +326,59 @@ pub enum QualifiedTypeName<'a> {
 }
 
 impl<'a> QualifiedTypeName<'a> {
-    pub(crate) fn tokens(&self) -> &'a [Token<'a>] {
+    pub(crate) fn tokens(self) -> TokenSlice<'a> {
         match self {
-            QualifiedTypeName::Absolute { tokens } => tokens,
-            QualifiedTypeName::Relative { tokens } => tokens,
+            QualifiedTypeName::Absolute { tokens } => TokenSlice(tokens),
+            QualifiedTypeName::Relative { tokens } => TokenSlice(tokens),
         }
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct TokenSlice<'a>(&'a [Token<'a>]);
+
+impl<'a> TokenSlice<'a> {
+    pub(crate) fn source_location(&self) -> SourceLocation<'a> {
+        let tokens = self.0;
+        let first_token = tokens
+            .first()
+            .expect("token slice must consist of at least one token");
+        let last_token = tokens
+            .last()
+            .expect("token slice must consist of at least one token");
+        let start_offset = first_token.source_location.byte_offset();
+        let end_offset =
+            last_token.source_location.byte_offset() + last_token.source_location.num_bytes();
+        let num_bytes = end_offset - start_offset;
+        SourceLocation::new(
+            first_token.source_location.filename(),
+            first_token.source_location.source(),
+            start_offset,
+            num_bytes,
+        )
+    }
+}
+
+impl<'a> From<&'a [Token<'a>]> for TokenSlice<'a> {
+    fn from(value: &'a [Token<'a>]) -> Self {
+        Self(value)
+    }
+}
+
+impl<'a> Deref for TokenSlice<'a> {
+    type Target = [Token<'a>];
+
+    fn deref(&self) -> &Self::Target {
+        self.0
+    }
+}
+
+impl<'a> Display for TokenSlice<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        for token in self.0 {
+            write!(f, "{}", token.lexeme())?;
+        }
+        Ok(())
     }
 }
 
@@ -270,10 +389,10 @@ pub enum QualifiedNonTypeName<'a> {
 }
 
 impl<'a> QualifiedNonTypeName<'a> {
-    fn tokens(&self) -> &'a [Token<'a>] {
+    fn tokens(self) -> TokenSlice<'a> {
         match self {
-            QualifiedNonTypeName::Absolute { tokens } => tokens,
-            QualifiedNonTypeName::Relative { tokens } => tokens,
+            QualifiedNonTypeName::Absolute { tokens } => TokenSlice(tokens),
+            QualifiedNonTypeName::Relative { tokens } => TokenSlice(tokens),
         }
     }
 }
@@ -291,14 +410,14 @@ impl PartialEq for QualifiedName<'_> {
         our_tokens.len() == other_tokens.len()
             && our_tokens
                 .iter()
-                .zip(other_tokens)
+                .zip(&*other_tokens)
                 .all(|(our_token, other_token)| our_token.lexeme() == other_token.lexeme())
     }
 }
 
 impl PartialEq<Identifier<'_>> for QualifiedName<'_> {
     fn eq(&self, other: &Identifier<'_>) -> bool {
-        match self.tokens() {
+        match &*self.tokens() {
             [Token {
                 source_location,
                 type_: TokenType::LowercaseIdentifier,
@@ -326,7 +445,7 @@ impl<'a> QualifiedName<'a> {
         }
     }
 
-    pub(crate) fn tokens(&self) -> &'a [Token<'a>] {
+    pub(crate) fn tokens(&self) -> TokenSlice<'a> {
         match self {
             QualifiedName::QualifiedTypeName(qualified_type_name) => qualified_type_name.tokens(),
             QualifiedName::QualifiedNonTypeName(qualified_non_type_name) => {
@@ -335,40 +454,23 @@ impl<'a> QualifiedName<'a> {
         }
     }
 
-    pub(crate) fn as_string(&self) -> String {
-        self.tokens()
-            .iter()
-            .map(|token| String::from(token.lexeme()))
-            .collect()
-    }
-
     pub(crate) fn source_location(&self) -> SourceLocation<'a> {
-        let tokens = self.tokens();
-        let first_token = tokens
-            .first()
-            .expect("qualified names must consist of at least one token");
-        let last_token = tokens
-            .last()
-            .expect("qualified names must consist of at least one token");
-        let start_offset = first_token.source_location.byte_offset();
-        let end_offset =
-            last_token.source_location.byte_offset() + last_token.source_location.num_bytes();
-        let num_bytes = end_offset - start_offset;
-        SourceLocation::new(
-            first_token.source_location.filename(),
-            first_token.source_location.source(),
-            start_offset,
-            num_bytes,
-        )
+        self.tokens().source_location()
+    }
+}
+
+impl Display for QualifiedName<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.tokens())
     }
 }
 
 impl From<&QualifiedName<'_>> for PathBuf {
     fn from(name: &QualifiedName) -> Self {
         let tokens = if name.is_absolute() {
-            &name.tokens()[1..]
+            &name.tokens().0[1..]
         } else {
-            name.tokens()
+            name.tokens().0
         };
         assert!(!tokens.is_empty());
         let path: PathBuf = tokens

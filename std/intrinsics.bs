@@ -1,6 +1,13 @@
 // [[intrinsic(never), author(coder2k), stdlib]]
 export struct Never {}
 
+export struct Nothing {}
+
+export struct Usize {}
+
+// [[intrinsic(u8)]]
+export struct U8 {}
+
 // [[intrinsic(u32)]]
 export struct U32 {}
 

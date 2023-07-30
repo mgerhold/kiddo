@@ -8,7 +8,7 @@ use crate::parser::ir_parsed::{
     Block, DataType, Definition, Expression, FunctionDefinition, FunctionParameter,
     GlobalVariableDefinition, Identifier, Import, Literal, LocalVariableDefinition, Module,
     Mutability, NonTypeIdentifier, QualifiedName, QualifiedNonTypeName, QualifiedTypeName,
-    Statement, StructDefinition, StructMember, TypeIdentifier,
+    Statement, StructDefinition, StructMember, TypeIdentifier, TypeListElement,
 };
 use crate::token::{Token, TokenType};
 use crate::utils::parse_unsigned_int;
@@ -536,7 +536,7 @@ impl<'a> ParserState<'a> {
         }
     }
 
-    fn type_list(&mut self) -> Result<Vec<DataType<'a>>, ParserError<'a>> {
+    fn type_list(&mut self) -> Result<Vec<TypeListElement<'a>>, ParserError<'a>> {
         let is_valid_type_start = |token: Token| {
             [
                 TokenType::ColonColon,
@@ -549,15 +549,20 @@ impl<'a> ParserState<'a> {
             .contains(&token.type_)
         };
 
-        let mut types = Vec::new();
+        let mut elements = Vec::new();
         while is_valid_type_start(self.current()) {
-            types.push(self.data_type()?);
-            if self.consume(TokenType::Comma).is_none() {
+            let data_type = self.data_type()?;
+            let comma_token = self.consume(TokenType::Comma);
+            elements.push(TypeListElement {
+                data_type,
+                comma_token,
+            });
+            if comma_token.is_none() {
                 break;
             }
         }
 
-        Ok(types)
+        Ok(elements)
     }
 
     fn data_type(&mut self) -> Result<DataType<'a>, ParserError<'a>> {
@@ -574,15 +579,19 @@ impl<'a> ParserState<'a> {
                 ..
             } => {
                 // array type
-                self.advance(1); // consume '['
+                let left_square_bracket_token = self.expect(TokenType::LeftSquareBracket)?;
                 let contained_type = self.bump_allocator.alloc(self.data_type()?);
-                self.expect(TokenType::Semicolon)?;
+                let semicolon_token = self.expect(TokenType::Semicolon)?;
                 let size_token = self.expect(TokenType::Integer)?;
                 let size = parse_unsigned_int(size_token)?;
-                self.expect(TokenType::RightSquareBracket)?;
+                let right_square_bracket_token = self.expect(TokenType::RightSquareBracket)?;
                 Ok(DataType::Array {
+                    left_square_bracket_token,
                     contained_type,
+                    semicolon_token,
                     size,
+                    size_token,
+                    right_square_bracket_token,
                 })
             }
             Token {
@@ -590,12 +599,13 @@ impl<'a> ParserState<'a> {
                 ..
             } => {
                 // pointer type
-                self.advance(1); // consume '->'
+                let arrow_token = self.expect(TokenType::Arrow)?;
 
                 let mutability = self.mutability();
 
                 let pointee_type = self.bump_allocator.alloc(self.data_type()?);
                 Ok(DataType::Pointer {
+                    arrow_token,
                     mutability,
                     pointee_type,
                 })
@@ -605,14 +615,18 @@ impl<'a> ParserState<'a> {
                 ..
             } => {
                 // function pointer type
-                self.advance(1); // consume 'Function'
-                self.expect(TokenType::LeftParenthesis)?;
+                let function_keyword_token = self.expect(TokenType::CapitalizedFunction)?;
+                let left_parenthesis_token = self.expect(TokenType::LeftParenthesis)?;
                 let parameter_types = self.type_list()?;
-                self.expect(TokenType::RightParenthesis)?;
-                self.expect(TokenType::TildeArrow)?;
+                let right_parenthesis_token = self.expect(TokenType::RightParenthesis)?;
+                let tilde_arrow_token = self.expect(TokenType::TildeArrow)?;
                 let return_type = self.bump_allocator.alloc(self.data_type()?);
                 Ok(DataType::FunctionPointer {
-                    parameter_types: self.bump_allocator.alloc_slice_copy(&parameter_types),
+                    function_keyword_token,
+                    left_parenthesis_token,
+                    parameter_list: self.bump_allocator.alloc_slice_copy(&parameter_types),
+                    right_parenthesis_token,
+                    tilde_arrow_token,
                     return_type,
                 })
             }

@@ -109,7 +109,7 @@ impl ErrorReport for ImportError<'_> {
                     &symbol_token.token().source_location,
                     format!(
                         "module '{}' (in '{}') does not export symbol '{}'",
-                        import_path.as_string(),
+                        import_path,
                         imported_module.canonical_path.display(),
                         symbol_token.token().lexeme()
                     ),

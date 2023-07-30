@@ -1,4 +1,5 @@
 use crate::constants::BackseatSize;
+use crate::parser::ir_parsed;
 pub(crate) use crate::parser::ir_parsed::Mutability;
 pub(crate) use crate::parser::ir_parsed::NonTypeIdentifier;
 pub(crate) use crate::parser::ir_parsed::TypeIdentifier;
@@ -81,7 +82,15 @@ pub(crate) struct StructDefinition<'a> {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct StructMember<'a> {
     pub(crate) name: NonTypeIdentifier<'a>,
-    pub(crate) type_: ResolvedDataType<'a>,
+    pub(crate) type_: &'a ResolvedDataType<'a>,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum ResolvedValue<'a> {
+    FunctionParameter(FunctionParameter<'a>),
+    LocalVariable(LocalVariableDefinition<'a>),
+    Function(FunctionDefinition<'a>),
+    GlobalVariable(GlobalVariableDefinition<'a>),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -98,14 +107,14 @@ pub(crate) enum ResolvedDataType<'a> {
         size: BackseatSize,
     },
     FunctionPointer {
-        parameter_types: &'a [ResolvedDataType<'a>],
+        parameter_types: &'a [&'a ResolvedDataType<'a>],
         return_type: &'a ResolvedDataType<'a>,
     },
 }
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ResolvedTypeName<'a> {
-    Struct(StructDefinition<'a>),
+    Struct(ir_parsed::StructDefinition<'a>),
 }
 
 #[derive(Debug, Clone, Copy)]
