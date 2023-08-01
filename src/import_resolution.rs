@@ -220,8 +220,6 @@ fn find_all_imports<'a>(
             continue;
         }
 
-        println!("processing next module: {}...", next_filename.display());
-
         let canonical_filename = bump_allocator.alloc_path(next_filename);
 
         let source = bump_allocator.alloc_str(
@@ -239,10 +237,6 @@ fn find_all_imports<'a>(
             &module,
             bump_allocator,
         )?;
-
-        for (_, path) in imports {
-            println!("\timport is: {}", path.display());
-        }
 
         processed_files.insert(canonical_filename.deref().to_owned());
 
