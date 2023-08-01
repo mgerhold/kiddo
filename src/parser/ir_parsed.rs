@@ -211,17 +211,12 @@ pub(crate) enum DataType<'a> {
     Array {
         left_square_bracket_token: &'a Token<'a>,
         contained_type: &'a DataType<'a>,
-        semicolon_token: &'a Token<'a>,
         size: BackseatSize,
-        size_token: &'a Token<'a>,
         right_square_bracket_token: &'a Token<'a>,
     },
     FunctionPointer {
         function_keyword_token: &'a Token<'a>,
-        left_parenthesis_token: &'a Token<'a>,
         parameter_list: &'a [TypeListElement<'a>],
-        right_parenthesis_token: &'a Token<'a>,
-        tilde_arrow_token: &'a Token<'a>,
         return_type: &'a DataType<'a>,
     },
 }
@@ -245,9 +240,6 @@ impl<'a> DataType<'a> {
             }
             DataType::Array {
                 left_square_bracket_token,
-                contained_type,
-                semicolon_token,
-                size_token,
                 right_square_bracket_token,
                 ..
             } => {
@@ -260,11 +252,8 @@ impl<'a> DataType<'a> {
             }
             DataType::FunctionPointer {
                 function_keyword_token,
-                left_parenthesis_token,
-                parameter_list,
-                right_parenthesis_token,
-                tilde_arrow_token,
                 return_type,
+                ..
             } => {
                 let first_token_address = std::ptr::from_ref(*function_keyword_token);
                 let return_type_tokens = return_type.tokens();

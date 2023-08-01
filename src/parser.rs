@@ -581,16 +581,14 @@ impl<'a> ParserState<'a> {
                 // array type
                 let left_square_bracket_token = self.expect(TokenType::LeftSquareBracket)?;
                 let contained_type = self.bump_allocator.alloc(self.data_type()?);
-                let semicolon_token = self.expect(TokenType::Semicolon)?;
+                self.expect(TokenType::Semicolon)?;
                 let size_token = self.expect(TokenType::Integer)?;
                 let size = parse_unsigned_int(size_token)?;
                 let right_square_bracket_token = self.expect(TokenType::RightSquareBracket)?;
                 Ok(DataType::Array {
                     left_square_bracket_token,
                     contained_type,
-                    semicolon_token,
                     size,
-                    size_token,
                     right_square_bracket_token,
                 })
             }
@@ -616,17 +614,14 @@ impl<'a> ParserState<'a> {
             } => {
                 // function pointer type
                 let function_keyword_token = self.expect(TokenType::CapitalizedFunction)?;
-                let left_parenthesis_token = self.expect(TokenType::LeftParenthesis)?;
+                self.expect(TokenType::LeftParenthesis)?;
                 let parameter_types = self.type_list()?;
-                let right_parenthesis_token = self.expect(TokenType::RightParenthesis)?;
-                let tilde_arrow_token = self.expect(TokenType::TildeArrow)?;
+                self.expect(TokenType::RightParenthesis)?;
+                self.expect(TokenType::TildeArrow)?;
                 let return_type = self.bump_allocator.alloc(self.data_type()?);
                 Ok(DataType::FunctionPointer {
                     function_keyword_token,
-                    left_parenthesis_token,
                     parameter_list: self.bump_allocator.alloc_slice_copy(&parameter_types),
-                    right_parenthesis_token,
-                    tilde_arrow_token,
                     return_type,
                 })
             }
