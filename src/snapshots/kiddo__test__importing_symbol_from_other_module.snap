@@ -1,6 +1,6 @@
 ---
 source: src/test.rs
-expression: "setup_test(function!(),\n        TestFile { filename: \"main.bs\", source: r#\"from utils import f;\n\"# },\n        &[TestFile {\n                        filename: \"utils.bs\",\n                        source: r#\"export function f() { }\n\"#,\n                    }]).compiler_output"
+expression: "setup_test(function_name!(),\n        TestFile { filename: \"main.bs\", source: r#\"from utils import f;\n\"# },\n        &[TestFile {\n                        filename: \"utils.bs\",\n                        source: r#\"export function f() { }\n\"#,\n                    }]).compiler_output"
 ---
 [
     ModuleWithConnectedImports {
@@ -10,12 +10,14 @@ expression: "setup_test(function!(),\n        TestFile { filename: \"main.bs\", 
                 FromImport {
                     where_: QualifiedNonTypeName(
                         Relative {
-                            tokens: [
-                                Token {
-                                    source_location: "utils" (main.bs:1:6, byte_offset=5),
-                                    type_: LowercaseIdentifier,
-                                },
-                            ],
+                            tokens: TokenSlice(
+                                [
+                                    Token {
+                                        source_location: "utils" (main.bs:1:6, byte_offset=5),
+                                        type_: LowercaseIdentifier,
+                                    },
+                                ],
+                            ),
                         },
                     ),
                     symbol: NonTypeIdentifier(
@@ -35,12 +37,14 @@ expression: "setup_test(function!(),\n        TestFile { filename: \"main.bs\", 
                 import: FromImport {
                     where_: QualifiedNonTypeName(
                         Relative {
-                            tokens: [
-                                Token {
-                                    source_location: "utils" (main.bs:1:6, byte_offset=5),
-                                    type_: LowercaseIdentifier,
-                                },
-                            ],
+                            tokens: TokenSlice(
+                                [
+                                    Token {
+                                        source_location: "utils" (main.bs:1:6, byte_offset=5),
+                                        type_: LowercaseIdentifier,
+                                    },
+                                ],
+                            ),
                         },
                     ),
                     symbol: NonTypeIdentifier(

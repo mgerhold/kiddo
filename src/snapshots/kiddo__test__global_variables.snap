@@ -42,12 +42,14 @@ expression: "setup_test(function_name!(),\n        TestFile {\n            filen
                         type_: Some(
                             Named {
                                 name: Relative {
-                                    tokens: [
-                                        Token {
-                                            source_location: "U32" (main.bs:2:14, byte_offset=31),
-                                            type_: UppercaseIdentifier,
-                                        },
-                                    ],
+                                    tokens: TokenSlice(
+                                        [
+                                            Token {
+                                                source_location: "U32" (main.bs:2:14, byte_offset=31),
+                                                type_: UppercaseIdentifier,
+                                            },
+                                        ],
+                                    ),
                                 },
                             },
                         ),
@@ -95,12 +97,14 @@ expression: "setup_test(function_name!(),\n        TestFile {\n            filen
                         type_: Some(
                             Named {
                                 name: Relative {
-                                    tokens: [
-                                        Token {
-                                            source_location: "U32" (main.bs:4:22, byte_offset=88),
-                                            type_: UppercaseIdentifier,
-                                        },
-                                    ],
+                                    tokens: TokenSlice(
+                                        [
+                                            Token {
+                                                source_location: "U32" (main.bs:4:22, byte_offset=88),
+                                                type_: UppercaseIdentifier,
+                                            },
+                                        ],
+                                    ),
                                 },
                             },
                         ),
@@ -148,12 +152,14 @@ expression: "setup_test(function_name!(),\n        TestFile {\n            filen
                         type_: Some(
                             Named {
                                 name: Relative {
-                                    tokens: [
-                                        Token {
-                                            source_location: "U32" (main.bs:6:20, byte_offset=141),
-                                            type_: UppercaseIdentifier,
-                                        },
-                                    ],
+                                    tokens: TokenSlice(
+                                        [
+                                            Token {
+                                                source_location: "U32" (main.bs:6:20, byte_offset=141),
+                                                type_: UppercaseIdentifier,
+                                            },
+                                        ],
+                                    ),
                                 },
                             },
                         ),
@@ -201,12 +207,14 @@ expression: "setup_test(function_name!(),\n        TestFile {\n            filen
                         type_: Some(
                             Named {
                                 name: Relative {
-                                    tokens: [
-                                        Token {
-                                            source_location: "U32" (main.bs:9:21, byte_offset=197),
-                                            type_: UppercaseIdentifier,
-                                        },
-                                    ],
+                                    tokens: TokenSlice(
+                                        [
+                                            Token {
+                                                source_location: "U32" (main.bs:9:21, byte_offset=197),
+                                                type_: UppercaseIdentifier,
+                                            },
+                                        ],
+                                    ),
                                 },
                             },
                         ),
@@ -254,12 +262,14 @@ expression: "setup_test(function_name!(),\n        TestFile {\n            filen
                         type_: Some(
                             Named {
                                 name: Relative {
-                                    tokens: [
-                                        Token {
-                                            source_location: "U32" (main.bs:11:29, byte_offset=268),
-                                            type_: UppercaseIdentifier,
-                                        },
-                                    ],
+                                    tokens: TokenSlice(
+                                        [
+                                            Token {
+                                                source_location: "U32" (main.bs:11:29, byte_offset=268),
+                                                type_: UppercaseIdentifier,
+                                            },
+                                        ],
+                                    ),
                                 },
                             },
                         ),
@@ -307,12 +317,14 @@ expression: "setup_test(function_name!(),\n        TestFile {\n            filen
                         type_: Some(
                             Named {
                                 name: Relative {
-                                    tokens: [
-                                        Token {
-                                            source_location: "U32" (main.bs:13:28, byte_offset=337),
-                                            type_: UppercaseIdentifier,
-                                        },
-                                    ],
+                                    tokens: TokenSlice(
+                                        [
+                                            Token {
+                                                source_location: "U32" (main.bs:13:28, byte_offset=337),
+                                                type_: UppercaseIdentifier,
+                                            },
+                                        ],
+                                    ),
                                 },
                             },
                         ),

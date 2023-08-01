@@ -93,12 +93,14 @@ expression: "setup_test(function_name!(),\n        TestFile {\n            filen
                                         type_: Some(
                                             Named {
                                                 name: Relative {
-                                                    tokens: [
-                                                        Token {
-                                                            source_location: "U32" (main.bs:5:12, byte_offset=88),
-                                                            type_: UppercaseIdentifier,
-                                                        },
-                                                    ],
+                                                    tokens: TokenSlice(
+                                                        [
+                                                            Token {
+                                                                source_location: "U32" (main.bs:5:12, byte_offset=88),
+                                                                type_: UppercaseIdentifier,
+                                                            },
+                                                        ],
+                                                    ),
                                                 },
                                             },
                                         ),
@@ -124,12 +126,14 @@ expression: "setup_test(function_name!(),\n        TestFile {\n            filen
                                         type_: Some(
                                             Named {
                                                 name: Relative {
-                                                    tokens: [
-                                                        Token {
-                                                            source_location: "U32" (main.bs:6:18, byte_offset=115),
-                                                            type_: UppercaseIdentifier,
-                                                        },
-                                                    ],
+                                                    tokens: TokenSlice(
+                                                        [
+                                                            Token {
+                                                                source_location: "U32" (main.bs:6:18, byte_offset=115),
+                                                                type_: UppercaseIdentifier,
+                                                            },
+                                                        ],
+                                                    ),
                                                 },
                                             },
                                         ),
@@ -155,12 +159,14 @@ expression: "setup_test(function_name!(),\n        TestFile {\n            filen
                                         type_: Some(
                                             Named {
                                                 name: Relative {
-                                                    tokens: [
-                                                        Token {
-                                                            source_location: "U32" (main.bs:7:20, byte_offset=144),
-                                                            type_: UppercaseIdentifier,
-                                                        },
-                                                    ],
+                                                    tokens: TokenSlice(
+                                                        [
+                                                            Token {
+                                                                source_location: "U32" (main.bs:7:20, byte_offset=144),
+                                                                type_: UppercaseIdentifier,
+                                                            },
+                                                        ],
+                                                    ),
                                                 },
                                             },
                                         ),

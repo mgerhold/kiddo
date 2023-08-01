@@ -2,8 +2,6 @@ use std::fmt::{Display, Formatter};
 use std::ops::Deref;
 use std::path::PathBuf;
 
-use bumpalo::Bump;
-
 use crate::constants::BackseatSize;
 use crate::token::{SourceLocation, Token, TokenType};
 
@@ -229,7 +227,7 @@ pub(crate) enum DataType<'a> {
 }
 
 impl<'a> DataType<'a> {
-    pub(crate) fn tokens(&self, bump_allocator: &'a Bump) -> TokenSlice<'a> {
+    pub(crate) fn tokens(&self) -> TokenSlice<'a> {
         match self {
             DataType::Named { name } => name.tokens(),
             DataType::Pointer {
@@ -237,10 +235,13 @@ impl<'a> DataType<'a> {
                 pointee_type,
                 ..
             } => {
-                let mut tokens = vec![*arrow_token];
-                let pointee_tokens = pointee_type.tokens(bump_allocator);
-                tokens.extend_from_slice(&*pointee_tokens);
-                TokenSlice(bump_allocator.alloc_slice_copy(&tokens))
+                let first_token_address = std::ptr::from_ref(*arrow_token);
+                let pointee_tokens = pointee_type.tokens();
+                let last_token_address = std::ptr::from_ref(pointee_tokens.last().unwrap());
+                let token_slice = unsafe {
+                    std::slice::from_ptr_range(first_token_address..last_token_address.offset(1))
+                };
+                TokenSlice(token_slice)
             }
             DataType::Array {
                 left_square_bracket_token,
@@ -250,13 +251,12 @@ impl<'a> DataType<'a> {
                 right_square_bracket_token,
                 ..
             } => {
-                let mut tokens = vec![*left_square_bracket_token];
-                let contained_tokens = contained_type.tokens(bump_allocator);
-                tokens.extend_from_slice(&*contained_tokens);
-                tokens.push(*semicolon_token);
-                tokens.push(*size_token);
-                tokens.push(*right_square_bracket_token);
-                TokenSlice(bump_allocator.alloc_slice_copy(&tokens))
+                let first_token_address = std::ptr::from_ref(*left_square_bracket_token);
+                let last_token_address = std::ptr::from_ref(*right_square_bracket_token);
+                let token_slice = unsafe {
+                    std::slice::from_ptr_range(first_token_address..last_token_address.offset(1))
+                };
+                TokenSlice(token_slice)
             }
             DataType::FunctionPointer {
                 function_keyword_token,
@@ -266,17 +266,14 @@ impl<'a> DataType<'a> {
                 tilde_arrow_token,
                 return_type,
             } => {
-                let mut tokens = vec![*function_keyword_token, *left_parenthesis_token];
-                for element in *parameter_list {
-                    tokens.extend_from_slice(&element.data_type.tokens(bump_allocator));
-                    if let Some(comma_token) = element.comma_token {
-                        tokens.push(comma_token);
-                    }
-                }
-                tokens.push(*right_parenthesis_token);
-                tokens.push(*tilde_arrow_token);
-                tokens.extend_from_slice(&return_type.tokens(bump_allocator));
-                TokenSlice(bump_allocator.alloc_slice_copy(&tokens))
+                let first_token_address = std::ptr::from_ref(*function_keyword_token);
+                let return_type_tokens = return_type.tokens();
+                let last_token_address =
+                    std::ptr::from_ref(return_type_tokens.iter().last().unwrap());
+                let token_slice = unsafe {
+                    std::slice::from_ptr_range(first_token_address..last_token_address.offset(1))
+                };
+                TokenSlice(token_slice)
             }
         }
     }
@@ -321,21 +318,21 @@ pub(crate) enum Statement<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub enum QualifiedTypeName<'a> {
-    Absolute { tokens: &'a [&'a Token<'a>] },
-    Relative { tokens: &'a [&'a Token<'a>] },
+    Absolute { tokens: TokenSlice<'a> },
+    Relative { tokens: TokenSlice<'a> },
 }
 
 impl<'a> QualifiedTypeName<'a> {
     pub(crate) fn tokens(self) -> TokenSlice<'a> {
         match self {
-            QualifiedTypeName::Absolute { tokens } => TokenSlice(tokens),
-            QualifiedTypeName::Relative { tokens } => TokenSlice(tokens),
+            QualifiedTypeName::Absolute { tokens } => tokens,
+            QualifiedTypeName::Relative { tokens } => tokens,
         }
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct TokenSlice<'a>(&'a [&'a Token<'a>]);
+pub struct TokenSlice<'a>(&'a [Token<'a>]);
 
 impl<'a> TokenSlice<'a> {
     pub(crate) fn source_location(&self) -> SourceLocation<'a> {
@@ -359,17 +356,17 @@ impl<'a> TokenSlice<'a> {
     }
 }
 
-impl<'a> From<&'a [&'a Token<'a>]> for TokenSlice<'a> {
-    fn from(value: &'a [&'a Token<'a>]) -> Self {
+impl<'a> From<&'a [Token<'a>]> for TokenSlice<'a> {
+    fn from(value: &'a [Token<'a>]) -> Self {
         Self(value)
     }
 }
 
 impl<'a> Deref for TokenSlice<'a> {
-    type Target = [&'a Token<'a>];
+    type Target = &'a [Token<'a>];
 
     fn deref(&self) -> &Self::Target {
-        self.0
+        &self.0
     }
 }
 
@@ -384,15 +381,15 @@ impl<'a> Display for TokenSlice<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub enum QualifiedNonTypeName<'a> {
-    Absolute { tokens: &'a [&'a Token<'a>] },
-    Relative { tokens: &'a [&'a Token<'a>] },
+    Absolute { tokens: TokenSlice<'a> },
+    Relative { tokens: TokenSlice<'a> },
 }
 
 impl<'a> QualifiedNonTypeName<'a> {
     fn tokens(self) -> TokenSlice<'a> {
         match self {
-            QualifiedNonTypeName::Absolute { tokens } => TokenSlice(tokens),
-            QualifiedNonTypeName::Relative { tokens } => TokenSlice(tokens),
+            QualifiedNonTypeName::Absolute { tokens } => tokens,
+            QualifiedNonTypeName::Relative { tokens } => tokens,
         }
     }
 }
@@ -410,7 +407,7 @@ impl PartialEq for QualifiedName<'_> {
         our_tokens.len() == other_tokens.len()
             && our_tokens
                 .iter()
-                .zip(&*other_tokens)
+                .zip(*other_tokens)
                 .all(|(our_token, other_token)| our_token.lexeme() == other_token.lexeme())
     }
 }
@@ -506,14 +503,17 @@ impl<'a> Identifier<'a> {
         self.token().lexeme().to_string()
     }
 
-    pub(crate) fn as_qualified_name(&self, bump_allocator: &'a Bump) -> QualifiedName<'a> {
-        let tokens = bump_allocator.alloc_slice_copy(&[self.token()]);
+    pub(crate) fn as_qualified_name(&self) -> QualifiedName<'a> {
         match self {
             Identifier::TypeIdentifier(_) => {
-                QualifiedName::QualifiedTypeName(QualifiedTypeName::Relative { tokens })
+                QualifiedName::QualifiedTypeName(QualifiedTypeName::Relative {
+                    tokens: TokenSlice(std::slice::from_ref(self.token())),
+                })
             }
             Identifier::NonTypeIdentifier(_) => {
-                QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Relative { tokens })
+                QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Relative {
+                    tokens: TokenSlice(std::slice::from_ref(self.token())),
+                })
             }
         }
     }

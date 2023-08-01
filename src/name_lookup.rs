@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use bumpalo::Bump;
 
 use crate::import_resolution::representations::ModulesWithConnectedImports;
-use crate::name_lookup::errors::NameLookupError;
+use crate::name_lookup::errors::{CouldNotResolveName, NameLookupError};
 use crate::name_lookup::ir_after_name_lookup as target_ir;
 use crate::parser::ir_parsed as source_ir;
 use crate::token::TokenType;
@@ -50,51 +50,77 @@ pub(crate) fn resolve_data_type<'a>(
     match data_type {
         source_ir::DataType::Named { name } => scope_stack
             .type_lookup(&name.tokens().to_string())
-            .ok_or_else(|| NameLookupError::CouldNotResolveName(name.tokens())),
+            .ok_or_else(|| {
+                NameLookupError::CouldNotResolveName(CouldNotResolveName::new(name.tokens()))
+            }),
         source_ir::DataType::Pointer {
             mutability,
             pointee_type,
             ..
-        } => resolve_data_type(*pointee_type, scope_stack, bump_allocator).map(
-            |resolved_pointee_type| {
+        } => resolve_data_type(*pointee_type, scope_stack, bump_allocator)
+            .map(|resolved_pointee_type| {
                 &*bump_allocator.alloc(target_ir::ResolvedDataType::Pointer {
                     mutability,
                     pointee_type: resolved_pointee_type,
                 })
-            },
-        ),
+            })
+            .map_err(
+                |NameLookupError::CouldNotResolveName(could_not_resolve_name)| {
+                    could_not_resolve_name
+                        .with_added_surrounding_tokens(data_type.tokens())
+                        .into()
+                },
+            ),
         source_ir::DataType::Array {
             contained_type,
             size,
             ..
-        } => resolve_data_type(*contained_type, scope_stack, bump_allocator).map(
-            |resolved_contained_type| {
+        } => resolve_data_type(*contained_type, scope_stack, bump_allocator)
+            .map(|resolved_contained_data_type| {
                 &*bump_allocator.alloc(target_ir::ResolvedDataType::Array {
-                    contained_type: resolved_contained_type,
+                    contained_type: resolved_contained_data_type,
                     size,
                 })
-            },
-        ),
+            })
+            .map_err(
+                |NameLookupError::CouldNotResolveName(could_not_resolve_name)| {
+                    could_not_resolve_name
+                        .with_added_surrounding_tokens(data_type.tokens())
+                        .into()
+                },
+            ),
         source_ir::DataType::FunctionPointer {
-            parameter_list: parameter_types,
+            parameter_list,
             return_type,
             ..
         } => {
-            let resolved_parameter_types: Result<Vec<_>, _> = parameter_types
-                .iter()
-                .map(|parameter| {
-                    resolve_data_type(parameter.data_type, scope_stack, bump_allocator)
-                })
-                .collect();
-            let resolved_parameter_types = resolved_parameter_types?;
-            let resolved_return_type =
-                resolve_data_type(*return_type, scope_stack, bump_allocator)?;
-            Ok(
-                &*bump_allocator.alloc(target_ir::ResolvedDataType::FunctionPointer {
-                    parameter_types: bump_allocator.alloc_slice_copy(&resolved_parameter_types),
-                    return_type: resolved_return_type,
-                }),
-            )
+            let mut resolved_parameter_types = Vec::new();
+            for parameter in parameter_list {
+                match resolve_data_type(parameter.data_type, scope_stack, bump_allocator) {
+                    Ok(resolved_parameter_type) => {
+                        resolved_parameter_types.push(resolved_parameter_type)
+                    }
+                    Err(NameLookupError::CouldNotResolveName(could_not_resolve_name)) => {
+                        return Err(could_not_resolve_name
+                            .with_added_surrounding_tokens(data_type.tokens())
+                            .into())
+                    }
+                }
+            }
+
+            match resolve_data_type(*return_type, scope_stack, bump_allocator) {
+                Ok(resolved_return_type) => Ok(&*bump_allocator.alloc(
+                    target_ir::ResolvedDataType::FunctionPointer {
+                        parameter_types: bump_allocator.alloc_slice_copy(&resolved_parameter_types),
+                        return_type: resolved_return_type,
+                    },
+                )),
+                Err(NameLookupError::CouldNotResolveName(could_not_resolve_name)) => {
+                    Err(could_not_resolve_name
+                        .with_added_surrounding_tokens(data_type.tokens())
+                        .into())
+                }
+            }
         }
     }
 }

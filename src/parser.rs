@@ -8,7 +8,7 @@ use crate::parser::ir_parsed::{
     Block, DataType, Definition, Expression, FunctionDefinition, FunctionParameter,
     GlobalVariableDefinition, Identifier, Import, Literal, LocalVariableDefinition, Module,
     Mutability, NonTypeIdentifier, QualifiedName, QualifiedNonTypeName, QualifiedTypeName,
-    Statement, StructDefinition, StructMember, TypeIdentifier, TypeListElement,
+    Statement, StructDefinition, StructMember, TokenSlice, TypeIdentifier, TypeListElement,
 };
 use crate::token::{Token, TokenType};
 use crate::utils::parse_unsigned_int;
@@ -17,13 +17,13 @@ pub(crate) mod errors;
 pub(crate) mod ir_parsed;
 
 struct ParserState<'a> {
-    tokens: &'a [&'a Token<'a>],
+    tokens: &'a [Token<'a>],
     current_index: usize,
     bump_allocator: &'a Bump,
 }
 
 impl<'a> ParserState<'a> {
-    fn new(tokens: &'a [&'a Token<'a>], bump_allocator: &'a Bump) -> Self {
+    fn new(tokens: &'a [Token<'a>], bump_allocator: &'a Bump) -> Self {
         Self {
             tokens,
             current_index: 0,
@@ -39,7 +39,7 @@ impl<'a> ParserState<'a> {
     }
 
     fn peek(&self) -> Option<&'a Token<'a>> {
-        self.tokens.get(self.current_index + 1).cloned()
+        self.tokens.get(self.current_index + 1)
     }
 
     fn expect(&mut self, type_: TokenType) -> Result<&'a Token<'a>, ParserError<'a>> {
@@ -674,7 +674,7 @@ impl<'a> ParserState<'a> {
         }
     }
 
-    fn consume_until_one_of(&mut self, types: &'static [TokenType]) -> &'a [&'a Token<'a>] {
+    fn consume_until_one_of(&mut self, types: &'static [TokenType]) -> &'a [Token<'a>] {
         let consumable_tokens = self.tokens[self.current_index..]
             .split(|token| types.contains(&token.type_))
             .next()
@@ -683,7 +683,7 @@ impl<'a> ParserState<'a> {
         consumable_tokens
     }
 
-    fn consume_until_none_of(&mut self, types: &'static [TokenType]) -> &'a [&'a Token<'a>] {
+    fn consume_until_none_of(&mut self, types: &'static [TokenType]) -> &'a [Token<'a>] {
         let consumable_tokens = self.tokens[self.current_index..]
             .split(|token| !types.contains(&token.type_))
             .next()
@@ -706,7 +706,7 @@ impl<'a> ParserState<'a> {
                 );
                 Err(ParserError::TokenTypeMismatch {
                     expected: &[TokenType::UppercaseIdentifier],
-                    actual: *qualified_name.tokens().last().unwrap(),
+                    actual: qualified_name.tokens().last().unwrap(),
                 })
             }
         }
@@ -728,7 +728,7 @@ impl<'a> ParserState<'a> {
                 );
                 Err(ParserError::TokenTypeMismatch {
                     expected: &[TokenType::LowercaseIdentifier],
-                    actual: *qualified_name.tokens().last().unwrap(),
+                    actual: qualified_name.tokens().last().unwrap(),
                 })
             }
         }
@@ -773,7 +773,7 @@ impl<'a> ParserState<'a> {
         if rest_of_tokens.first().unwrap().type_ == TokenType::UppercaseIdentifier {
             return Ok(QualifiedName::QualifiedTypeName(
                 QualifiedTypeName::Relative {
-                    tokens: &rest_of_tokens[..1],
+                    tokens: TokenSlice::from(&rest_of_tokens[..1]),
                 },
             ));
         }
@@ -802,31 +802,31 @@ impl<'a> ParserState<'a> {
             if tokens[1].type_ != TokenType::LowercaseIdentifier {
                 return Err(ParserError::TokenTypeMismatch {
                     expected: &[TokenType::LowercaseIdentifier],
-                    actual: tokens[1],
+                    actual: &tokens[1],
                 });
             }
         }
 
         Ok(match (is_absolute, is_type_name) {
-            (true, true) => {
-                QualifiedName::QualifiedTypeName(QualifiedTypeName::Absolute { tokens })
-            }
-            (true, false) => {
-                QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Absolute { tokens })
-            }
-            (false, true) => {
-                QualifiedName::QualifiedTypeName(QualifiedTypeName::Relative { tokens })
-            }
-            (false, false) => {
-                QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Relative { tokens })
-            }
+            (true, true) => QualifiedName::QualifiedTypeName(QualifiedTypeName::Absolute {
+                tokens: tokens.into(),
+            }),
+            (true, false) => QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Absolute {
+                tokens: tokens.into(),
+            }),
+            (false, true) => QualifiedName::QualifiedTypeName(QualifiedTypeName::Relative {
+                tokens: tokens.into(),
+            }),
+            (false, false) => QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Relative {
+                tokens: tokens.into(),
+            }),
         })
     }
 
     fn repeated_tokens(
         &mut self,
         sequence: &'static [TokenType],
-    ) -> Result<&'a [&'a Token<'a>], ParserError> {
+    ) -> Result<&'a [Token<'a>], ParserError> {
         assert!(!sequence.is_empty());
         let mut num_tokens = 0;
         let start_index = self.current_index;
@@ -854,7 +854,7 @@ impl<'a> ParserState<'a> {
 }
 
 fn parse<'a>(
-    tokens: &'a [&'a Token<'a>],
+    tokens: &'a [Token<'a>],
     bump_allocator: &'a Bump,
 ) -> Result<Module<'a>, ParserError<'a>> {
     ParserState::new(tokens, bump_allocator).module()
