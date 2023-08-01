@@ -17,13 +17,13 @@ pub(crate) mod errors;
 pub(crate) mod ir_parsed;
 
 struct ParserState<'a> {
-    tokens: &'a [Token<'a>],
+    tokens: &'a [&'a Token<'a>],
     current_index: usize,
     bump_allocator: &'a Bump,
 }
 
 impl<'a> ParserState<'a> {
-    fn new(tokens: &'a [Token<'a>], bump_allocator: &'a Bump) -> Self {
+    fn new(tokens: &'a [&'a Token<'a>], bump_allocator: &'a Bump) -> Self {
         Self {
             tokens,
             current_index: 0,
@@ -31,18 +31,18 @@ impl<'a> ParserState<'a> {
         }
     }
 
-    fn current(&self) -> Token<'a> {
+    fn current(&self) -> &'a Token<'a> {
         match self.tokens.get(self.current_index) {
-            Some(token) => *token,
-            None => *self.tokens.last().expect("token list is not empty"),
+            Some(token) => token,
+            None => self.tokens.last().expect("token list is not empty"),
         }
     }
 
-    fn peek(&self) -> Option<Token<'a>> {
+    fn peek(&self) -> Option<&'a Token<'a>> {
         self.tokens.get(self.current_index + 1).cloned()
     }
 
-    fn expect(&mut self, type_: TokenType) -> Result<Token<'a>, ParserError<'a>> {
+    fn expect(&mut self, type_: TokenType) -> Result<&'a Token<'a>, ParserError<'a>> {
         let current_token = self.current();
         self.consume(type_)
             .ok_or_else(move || ParserError::TokenTypeMismatch {
@@ -54,7 +54,7 @@ impl<'a> ParserState<'a> {
     fn expect_one_of(
         &mut self,
         expected: &'static [TokenType],
-    ) -> Result<Token<'a>, ParserError<'a>> {
+    ) -> Result<&'a Token<'a>, ParserError<'a>> {
         let current_token = self.current();
         if expected.iter().any(|type_| current_token.type_ == *type_) {
             self.advance(1);
@@ -67,7 +67,7 @@ impl<'a> ParserState<'a> {
         }
     }
 
-    fn consume(&mut self, type_: TokenType) -> Option<Token<'a>> {
+    fn consume(&mut self, type_: TokenType) -> Option<&'a Token<'a>> {
         let result = self.current();
         if result.type_ == type_ {
             self.advance(1);
@@ -77,7 +77,7 @@ impl<'a> ParserState<'a> {
         }
     }
 
-    fn consume_one_of(&mut self, types: &[TokenType]) -> Option<Token<'a>> {
+    fn consume_one_of(&mut self, types: &[TokenType]) -> Option<&'a Token<'a>> {
         types.iter().filter_map(|type_| self.consume(*type_)).next()
     }
 
@@ -95,7 +95,7 @@ impl<'a> ParserState<'a> {
         let definitions = self.definitions()?; // maybe empty
 
         match self.current() {
-            Token { type_, .. } if type_ != TokenType::EndOfInput => {
+            Token { type_, .. } if *type_ != TokenType::EndOfInput => {
                 // leftover tokens
                 Err(ParserError::TokenTypeMismatch {
                     expected: &[TokenType::EndOfInput],
@@ -537,7 +537,7 @@ impl<'a> ParserState<'a> {
     }
 
     fn type_list(&mut self) -> Result<Vec<TypeListElement<'a>>, ParserError<'a>> {
-        let is_valid_type_start = |token: Token| {
+        let is_valid_type_start = |token: &Token| {
             [
                 TokenType::ColonColon,
                 TokenType::LowercaseIdentifier,
@@ -674,7 +674,7 @@ impl<'a> ParserState<'a> {
         }
     }
 
-    fn consume_until_one_of(&mut self, types: &'static [TokenType]) -> &'a [Token<'a>] {
+    fn consume_until_one_of(&mut self, types: &'static [TokenType]) -> &'a [&'a Token<'a>] {
         let consumable_tokens = self.tokens[self.current_index..]
             .split(|token| types.contains(&token.type_))
             .next()
@@ -683,7 +683,7 @@ impl<'a> ParserState<'a> {
         consumable_tokens
     }
 
-    fn consume_until_none_of(&mut self, types: &'static [TokenType]) -> &'a [Token<'a>] {
+    fn consume_until_none_of(&mut self, types: &'static [TokenType]) -> &'a [&'a Token<'a>] {
         let consumable_tokens = self.tokens[self.current_index..]
             .split(|token| !types.contains(&token.type_))
             .next()
@@ -826,7 +826,7 @@ impl<'a> ParserState<'a> {
     fn repeated_tokens(
         &mut self,
         sequence: &'static [TokenType],
-    ) -> Result<&'a [Token<'a>], ParserError> {
+    ) -> Result<&'a [&'a Token<'a>], ParserError> {
         assert!(!sequence.is_empty());
         let mut num_tokens = 0;
         let start_index = self.current_index;
@@ -854,7 +854,7 @@ impl<'a> ParserState<'a> {
 }
 
 fn parse<'a>(
-    tokens: &'a [Token<'a>],
+    tokens: &'a [&'a Token<'a>],
     bump_allocator: &'a Bump,
 ) -> Result<Module<'a>, ParserError<'a>> {
     ParserState::new(tokens, bump_allocator).module()
@@ -865,8 +865,7 @@ pub(crate) fn parse_module<'a>(
     source: &'a str,
     bump_allocator: &'a Bump,
 ) -> Result<Module<'a>, Box<dyn ErrorReport + 'a>> {
-    let tokens = tokenize(filename, source)?;
-    let tokens = bump_allocator.alloc_slice_clone(&tokens);
+    let tokens = tokenize(filename, source, bump_allocator)?;
     let module = parse(tokens, bump_allocator)?;
     Ok(module)
 }

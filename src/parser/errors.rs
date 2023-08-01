@@ -81,14 +81,14 @@ where
 pub enum ParserError<'a> {
     TokenTypeMismatch {
         expected: &'a [TokenType],
-        actual: Token<'a>,
+        actual: &'a Token<'a>,
     },
     UnexpectedEndOfInput {
         expected: &'static [TokenType],
-        end_of_input_token: Option<Token<'a>>,
+        end_of_input_token: Option<&'a Token<'a>>,
     },
     IntegerLiteralOutOfBounds {
-        token: Token<'a>,
+        token: &'a Token<'a>,
     },
 }
 

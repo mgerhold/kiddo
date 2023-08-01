@@ -197,7 +197,7 @@ pub(crate) enum Mutability {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct TypeListElement<'a> {
     pub(crate) data_type: DataType<'a>,
-    pub(crate) comma_token: Option<Token<'a>>,
+    pub(crate) comma_token: Option<&'a Token<'a>>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -206,24 +206,24 @@ pub(crate) enum DataType<'a> {
         name: QualifiedTypeName<'a>,
     },
     Pointer {
-        arrow_token: Token<'a>,
+        arrow_token: &'a Token<'a>,
         mutability: Mutability,
         pointee_type: &'a DataType<'a>,
     },
     Array {
-        left_square_bracket_token: Token<'a>,
+        left_square_bracket_token: &'a Token<'a>,
         contained_type: &'a DataType<'a>,
-        semicolon_token: Token<'a>,
+        semicolon_token: &'a Token<'a>,
         size: BackseatSize,
-        size_token: Token<'a>,
-        right_square_bracket_token: Token<'a>,
+        size_token: &'a Token<'a>,
+        right_square_bracket_token: &'a Token<'a>,
     },
     FunctionPointer {
-        function_keyword_token: Token<'a>,
-        left_parenthesis_token: Token<'a>,
+        function_keyword_token: &'a Token<'a>,
+        left_parenthesis_token: &'a Token<'a>,
         parameter_list: &'a [TypeListElement<'a>],
-        right_parenthesis_token: Token<'a>,
-        tilde_arrow_token: Token<'a>,
+        right_parenthesis_token: &'a Token<'a>,
+        tilde_arrow_token: &'a Token<'a>,
         return_type: &'a DataType<'a>,
     },
 }
@@ -295,7 +295,7 @@ pub(crate) struct Block<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Literal<'a> {
-    Integer(Token<'a>),
+    Integer(&'a Token<'a>),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -303,7 +303,7 @@ pub(crate) enum Expression<'a> {
     Literal(Literal<'a>),
     BinaryOperator {
         lhs: &'a Expression<'a>,
-        operator: Token<'a>,
+        operator: &'a Token<'a>,
         rhs: &'a Expression<'a>,
     },
     Block(Block<'a>),
@@ -321,8 +321,8 @@ pub(crate) enum Statement<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub enum QualifiedTypeName<'a> {
-    Absolute { tokens: &'a [Token<'a>] },
-    Relative { tokens: &'a [Token<'a>] },
+    Absolute { tokens: &'a [&'a Token<'a>] },
+    Relative { tokens: &'a [&'a Token<'a>] },
 }
 
 impl<'a> QualifiedTypeName<'a> {
@@ -335,7 +335,7 @@ impl<'a> QualifiedTypeName<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct TokenSlice<'a>(&'a [Token<'a>]);
+pub(crate) struct TokenSlice<'a>(&'a [&'a Token<'a>]);
 
 impl<'a> TokenSlice<'a> {
     pub(crate) fn source_location(&self) -> SourceLocation<'a> {
@@ -359,14 +359,14 @@ impl<'a> TokenSlice<'a> {
     }
 }
 
-impl<'a> From<&'a [Token<'a>]> for TokenSlice<'a> {
-    fn from(value: &'a [Token<'a>]) -> Self {
+impl<'a> From<&'a [&'a Token<'a>]> for TokenSlice<'a> {
+    fn from(value: &'a [&'a Token<'a>]) -> Self {
         Self(value)
     }
 }
 
 impl<'a> Deref for TokenSlice<'a> {
-    type Target = [Token<'a>];
+    type Target = [&'a Token<'a>];
 
     fn deref(&self) -> &Self::Target {
         self.0
@@ -384,8 +384,8 @@ impl<'a> Display for TokenSlice<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub enum QualifiedNonTypeName<'a> {
-    Absolute { tokens: &'a [Token<'a>] },
-    Relative { tokens: &'a [Token<'a>] },
+    Absolute { tokens: &'a [&'a Token<'a>] },
+    Relative { tokens: &'a [&'a Token<'a>] },
 }
 
 impl<'a> QualifiedNonTypeName<'a> {
@@ -483,10 +483,10 @@ impl From<&QualifiedName<'_>> for PathBuf {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct TypeIdentifier<'a>(pub Token<'a>);
+pub struct TypeIdentifier<'a>(pub &'a Token<'a>);
 
 #[derive(Debug, Clone, Copy)]
-pub struct NonTypeIdentifier<'a>(pub Token<'a>);
+pub struct NonTypeIdentifier<'a>(pub &'a Token<'a>);
 
 #[derive(Debug, Clone, Copy)]
 pub enum Identifier<'a> {
@@ -495,7 +495,7 @@ pub enum Identifier<'a> {
 }
 
 impl<'a> Identifier<'a> {
-    pub(crate) fn token(self) -> Token<'a> {
+    pub(crate) fn token(self) -> &'a Token<'a> {
         match self {
             Identifier::TypeIdentifier(type_identifier) => type_identifier.0,
             Identifier::NonTypeIdentifier(non_type_identifier) => non_type_identifier.0,

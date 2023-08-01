@@ -1,6 +1,7 @@
 use std::path::Path;
 use std::{error::Error, fmt};
 
+use bumpalo::Bump;
 use unicode_xid::UnicodeXID;
 
 use crate::parser::errors::{print_error, ErrorReport};
@@ -158,9 +159,10 @@ impl<'a> LexerState<'a> {
 pub(crate) fn tokenize<'a>(
     filename: &'a Path,
     source: &'a str,
-) -> Result<Vec<Token<'a>>, LexerError<'a>> {
+    bump_allocator: &'a Bump,
+) -> Result<&'a [&'a Token<'a>], LexerError<'a>> {
     let mut state = LexerState::new(filename, source)?;
-    let mut tokens = Vec::new();
+    let mut tokens: Vec<&Token> = Vec::new();
     while !state.is_end_of_input() {
         let single_char_token = match state.current() {
             '{' => Some(TokenType::LeftCurlyBracket),
@@ -180,26 +182,26 @@ pub(crate) fn tokenize<'a>(
         };
 
         if let Some(type_) = single_char_token {
-            tokens.push(Token {
+            tokens.push(bump_allocator.alloc(Token {
                 source_location: state.current_source_location(1),
                 type_,
-            });
+            }));
             state.advance();
             continue;
         }
 
         if state.current() == '-' {
             if state.peek() == '>' {
-                tokens.push(Token {
+                tokens.push(bump_allocator.alloc(Token {
                     source_location: state.current_source_location(2),
                     type_: TokenType::Arrow,
-                });
+                }));
                 state.advance();
             } else {
-                tokens.push(Token {
+                tokens.push(bump_allocator.alloc(Token {
                     source_location: state.current_source_location(1),
                     type_: TokenType::Minus,
-                });
+                }));
             }
             state.advance();
             continue;
@@ -207,16 +209,16 @@ pub(crate) fn tokenize<'a>(
 
         if state.current() == '!' {
             if state.peek() == '=' {
-                tokens.push(Token {
+                tokens.push(bump_allocator.alloc(Token {
                     source_location: state.current_source_location(2),
                     type_: TokenType::ExclamationMarkEquals,
-                });
+                }));
                 state.advance();
             } else {
-                tokens.push(Token {
+                tokens.push(bump_allocator.alloc(Token {
                     source_location: state.current_source_location(1),
                     type_: TokenType::ExclamationMark,
-                });
+                }));
             }
             state.advance();
             continue;
@@ -224,16 +226,16 @@ pub(crate) fn tokenize<'a>(
 
         if state.current() == '>' {
             if state.peek() == '=' {
-                tokens.push(Token {
+                tokens.push(bump_allocator.alloc(Token {
                     source_location: state.current_source_location(2),
                     type_: TokenType::GreaterThanEquals,
-                });
+                }));
                 state.advance();
             } else {
-                tokens.push(Token {
+                tokens.push(bump_allocator.alloc(Token {
                     source_location: state.current_source_location(1),
                     type_: TokenType::GreaterThan,
-                })
+                }))
             }
             state.advance();
             continue;
@@ -241,26 +243,26 @@ pub(crate) fn tokenize<'a>(
 
         if state.current() == '<' {
             if state.peek() == '=' {
-                tokens.push(Token {
+                tokens.push(bump_allocator.alloc(Token {
                     source_location: state.current_source_location(2),
                     type_: TokenType::LessThanEquals,
-                });
+                }));
                 state.advance();
             } else {
-                tokens.push(Token {
+                tokens.push(bump_allocator.alloc(Token {
                     source_location: state.current_source_location(1),
                     type_: TokenType::LessThan,
-                })
+                }))
             }
             state.advance();
             continue;
         }
 
         if state.current() == '~' && state.peek() == '>' {
-            tokens.push(Token {
+            tokens.push(bump_allocator.alloc(Token {
                 source_location: state.current_source_location(2),
                 type_: TokenType::TildeArrow,
-            });
+            }));
             state.advance();
             state.advance();
             continue;
@@ -268,16 +270,16 @@ pub(crate) fn tokenize<'a>(
 
         if state.current() == ':' {
             if state.peek() == ':' {
-                tokens.push(Token {
+                tokens.push(bump_allocator.alloc(Token {
                     source_location: state.current_source_location(2),
                     type_: TokenType::ColonColon,
-                });
+                }));
                 state.advance();
             } else {
-                tokens.push(Token {
+                tokens.push(bump_allocator.alloc(Token {
                     source_location: state.current_source_location(1),
                     type_: TokenType::Colon,
-                })
+                }))
             }
             state.advance();
             continue;
@@ -360,10 +362,10 @@ pub(crate) fn tokenize<'a>(
 
             let end_offset = state.offset;
             let num_bytes = end_offset - start_offset;
-            tokens.push(Token {
+            tokens.push(bump_allocator.alloc(Token {
                 source_location: state.source_location_at(start_offset, num_bytes),
                 type_: TokenType::Integer,
-            });
+            }));
             continue;
         }
 
@@ -409,10 +411,10 @@ pub(crate) fn tokenize<'a>(
                 _ => TokenType::LowercaseIdentifier,
             };
 
-            tokens.push(Token {
+            tokens.push(bump_allocator.alloc(Token {
                 source_location: state.source_location_at(start_offset, num_bytes),
                 type_,
-            });
+            }));
             continue;
         }
 
@@ -444,10 +446,10 @@ pub(crate) fn tokenize<'a>(
             state.advance(); // consume closing '
             let end_offset = state.offset;
             let num_bytes = end_offset - start_offset;
-            tokens.push(Token {
+            tokens.push(bump_allocator.alloc(Token {
                 source_location: state.source_location_at(start_offset, num_bytes),
                 type_: TokenType::Char,
-            });
+            }));
             continue;
         }
 
@@ -486,10 +488,10 @@ pub(crate) fn tokenize<'a>(
                     return Err(LexerError::UnterminatedMultilineComment(source_location));
                 }
             } else {
-                tokens.push(Token {
+                tokens.push(bump_allocator.alloc(Token {
                     source_location: state.current_source_location(1),
                     type_: TokenType::Slash,
-                });
+                }));
                 state.advance();
             }
             continue;
@@ -506,9 +508,10 @@ pub(crate) fn tokenize<'a>(
         ));
     }
 
-    tokens.push(Token {
+    tokens.push(bump_allocator.alloc(Token {
         source_location: state.current_source_location(0),
         type_: TokenType::EndOfInput,
-    });
-    Ok(tokens)
+    }));
+
+    Ok(bump_allocator.alloc_slice_copy(&tokens))
 }

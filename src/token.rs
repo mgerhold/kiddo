@@ -193,7 +193,9 @@ pub enum TokenType {
     EndOfInput,
 }
 
-#[derive(Debug, Clone, Copy)]
+// this type used to derive Copy, but this has been changed to ensure that all references to
+// tokens point to the "original" tokens that have been emitted by the lexer
+#[derive(Debug, Clone)]
 pub struct Token<'a> {
     pub source_location: SourceLocation<'a>,
     pub type_: TokenType,
