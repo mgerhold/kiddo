@@ -70,7 +70,7 @@ pub enum ImportError<'a> {
         previous_import: Import<'a>,
     },
     ImportedAsForbiddenName {
-        as_: Token<'a>,
+        as_: &'a Token<'a>,
         hint_location: SourceLocation<'a>,
     },
 }

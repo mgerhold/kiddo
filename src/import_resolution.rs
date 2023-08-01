@@ -377,9 +377,9 @@ fn check_imports_for_module<'a>(
     })
 }
 
-fn check_against_clashes_with_local_definitions<'a>(
-    module_with_resolved_imports_and_exports: ModuleWithResolvedImportsAndExports<'a>,
-) -> Result<(), ImportError<'a>> {
+fn check_against_clashes_with_local_definitions(
+    module_with_resolved_imports_and_exports: ModuleWithResolvedImportsAndExports,
+) -> Result<(), ImportError> {
     for resolved_import in module_with_resolved_imports_and_exports.imports {
         let Some(imported_as) = resolved_import.import.as_what() else {
             continue;

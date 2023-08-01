@@ -1,9 +1,11 @@
 use std::path::Path;
 use std::{error::Error, fmt};
 
+use bumpalo::Bump;
 use unicode_xid::UnicodeXID;
 
 use crate::parser::errors::{print_error, ErrorReport};
+use crate::parser::ir_parsed::TokenSlice;
 use crate::token::{SourceLocation, Token, TokenType};
 
 #[derive(Debug)]
@@ -158,9 +160,10 @@ impl<'a> LexerState<'a> {
 pub(crate) fn tokenize<'a>(
     filename: &'a Path,
     source: &'a str,
-) -> Result<Vec<Token<'a>>, LexerError<'a>> {
+    bump_allocator: &'a Bump,
+) -> Result<TokenSlice<'a>, LexerError<'a>> {
     let mut state = LexerState::new(filename, source)?;
-    let mut tokens = Vec::new();
+    let mut tokens: Vec<Token> = Vec::new();
     while !state.is_end_of_input() {
         let single_char_token = match state.current() {
             '{' => Some(TokenType::LeftCurlyBracket),
@@ -510,5 +513,8 @@ pub(crate) fn tokenize<'a>(
         source_location: state.current_source_location(0),
         type_: TokenType::EndOfInput,
     });
-    Ok(tokens)
+
+    Ok(TokenSlice::from(
+        &*bump_allocator.alloc_slice_clone(&tokens),
+    ))
 }

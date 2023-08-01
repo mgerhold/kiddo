@@ -20,7 +20,9 @@ impl AllocPath for Bump {
     }
 }
 
-pub(crate) fn parse_unsigned_int<T: num_traits::Unsigned>(token: Token) -> Result<T, ParserError> {
+pub(crate) fn parse_unsigned_int<'a, T: num_traits::Unsigned>(
+    token: &'a Token<'a>,
+) -> Result<T, ParserError<'a>> {
     let lexeme = token.lexeme();
     if let Some(lexeme) = lexeme.strip_prefix("0x") {
         T::from_str_radix(lexeme, 16).map_err(|_| ParserError::IntegerLiteralOutOfBounds { token })

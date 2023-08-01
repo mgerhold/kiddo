@@ -55,10 +55,10 @@ pub(crate) struct LocalVariableDefinition<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Expression<'a> {
-    IntegerLiteral(Token<'a>),
+    IntegerLiteral(&'a Token<'a>),
     BinaryOperator {
         lhs: &'a Expression<'a>,
-        operator: Token<'a>,
+        operator: &'a Token<'a>,
         rhs: &'a Expression<'a>,
     },
     Block(Block<'a>),

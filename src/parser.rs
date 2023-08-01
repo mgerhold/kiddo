@@ -8,7 +8,7 @@ use crate::parser::ir_parsed::{
     Block, DataType, Definition, Expression, FunctionDefinition, FunctionParameter,
     GlobalVariableDefinition, Identifier, Import, Literal, LocalVariableDefinition, Module,
     Mutability, NonTypeIdentifier, QualifiedName, QualifiedNonTypeName, QualifiedTypeName,
-    Statement, StructDefinition, StructMember, TypeIdentifier, TypeListElement,
+    Statement, StructDefinition, StructMember, TokenSlice, TypeIdentifier, TypeListElement,
 };
 use crate::token::{Token, TokenType};
 use crate::utils::parse_unsigned_int;
@@ -17,13 +17,13 @@ pub(crate) mod errors;
 pub(crate) mod ir_parsed;
 
 struct ParserState<'a> {
-    tokens: &'a [Token<'a>],
+    tokens: TokenSlice<'a>,
     current_index: usize,
     bump_allocator: &'a Bump,
 }
 
 impl<'a> ParserState<'a> {
-    fn new(tokens: &'a [Token<'a>], bump_allocator: &'a Bump) -> Self {
+    fn new(tokens: TokenSlice<'a>, bump_allocator: &'a Bump) -> Self {
         Self {
             tokens,
             current_index: 0,
@@ -31,18 +31,18 @@ impl<'a> ParserState<'a> {
         }
     }
 
-    fn current(&self) -> Token<'a> {
+    fn current(&self) -> &'a Token<'a> {
         match self.tokens.get(self.current_index) {
-            Some(token) => *token,
-            None => *self.tokens.last().expect("token list is not empty"),
+            Some(token) => token,
+            None => self.tokens.last().expect("token list is not empty"),
         }
     }
 
-    fn peek(&self) -> Option<Token<'a>> {
-        self.tokens.get(self.current_index + 1).cloned()
+    fn peek(&self) -> Option<&'a Token<'a>> {
+        self.tokens.get(self.current_index + 1)
     }
 
-    fn expect(&mut self, type_: TokenType) -> Result<Token<'a>, ParserError<'a>> {
+    fn expect(&mut self, type_: TokenType) -> Result<&'a Token<'a>, ParserError<'a>> {
         let current_token = self.current();
         self.consume(type_)
             .ok_or_else(move || ParserError::TokenTypeMismatch {
@@ -54,7 +54,7 @@ impl<'a> ParserState<'a> {
     fn expect_one_of(
         &mut self,
         expected: &'static [TokenType],
-    ) -> Result<Token<'a>, ParserError<'a>> {
+    ) -> Result<&'a Token<'a>, ParserError<'a>> {
         let current_token = self.current();
         if expected.iter().any(|type_| current_token.type_ == *type_) {
             self.advance(1);
@@ -67,7 +67,7 @@ impl<'a> ParserState<'a> {
         }
     }
 
-    fn consume(&mut self, type_: TokenType) -> Option<Token<'a>> {
+    fn consume(&mut self, type_: TokenType) -> Option<&'a Token<'a>> {
         let result = self.current();
         if result.type_ == type_ {
             self.advance(1);
@@ -77,7 +77,7 @@ impl<'a> ParserState<'a> {
         }
     }
 
-    fn consume_one_of(&mut self, types: &[TokenType]) -> Option<Token<'a>> {
+    fn consume_one_of(&mut self, types: &[TokenType]) -> Option<&'a Token<'a>> {
         types.iter().filter_map(|type_| self.consume(*type_)).next()
     }
 
@@ -95,7 +95,7 @@ impl<'a> ParserState<'a> {
         let definitions = self.definitions()?; // maybe empty
 
         match self.current() {
-            Token { type_, .. } if type_ != TokenType::EndOfInput => {
+            Token { type_, .. } if *type_ != TokenType::EndOfInput => {
                 // leftover tokens
                 Err(ParserError::TokenTypeMismatch {
                     expected: &[TokenType::EndOfInput],
@@ -537,7 +537,7 @@ impl<'a> ParserState<'a> {
     }
 
     fn type_list(&mut self) -> Result<Vec<TypeListElement<'a>>, ParserError<'a>> {
-        let is_valid_type_start = |token: Token| {
+        let is_valid_type_start = |token: &Token| {
             [
                 TokenType::ColonColon,
                 TokenType::LowercaseIdentifier,
@@ -581,16 +581,14 @@ impl<'a> ParserState<'a> {
                 // array type
                 let left_square_bracket_token = self.expect(TokenType::LeftSquareBracket)?;
                 let contained_type = self.bump_allocator.alloc(self.data_type()?);
-                let semicolon_token = self.expect(TokenType::Semicolon)?;
+                self.expect(TokenType::Semicolon)?;
                 let size_token = self.expect(TokenType::Integer)?;
                 let size = parse_unsigned_int(size_token)?;
                 let right_square_bracket_token = self.expect(TokenType::RightSquareBracket)?;
                 Ok(DataType::Array {
                     left_square_bracket_token,
                     contained_type,
-                    semicolon_token,
                     size,
-                    size_token,
                     right_square_bracket_token,
                 })
             }
@@ -616,17 +614,14 @@ impl<'a> ParserState<'a> {
             } => {
                 // function pointer type
                 let function_keyword_token = self.expect(TokenType::CapitalizedFunction)?;
-                let left_parenthesis_token = self.expect(TokenType::LeftParenthesis)?;
+                self.expect(TokenType::LeftParenthesis)?;
                 let parameter_types = self.type_list()?;
-                let right_parenthesis_token = self.expect(TokenType::RightParenthesis)?;
-                let tilde_arrow_token = self.expect(TokenType::TildeArrow)?;
+                self.expect(TokenType::RightParenthesis)?;
+                self.expect(TokenType::TildeArrow)?;
                 let return_type = self.bump_allocator.alloc(self.data_type()?);
                 Ok(DataType::FunctionPointer {
                     function_keyword_token,
-                    left_parenthesis_token,
                     parameter_list: self.bump_allocator.alloc_slice_copy(&parameter_types),
-                    right_parenthesis_token,
-                    tilde_arrow_token,
                     return_type,
                 })
             }
@@ -674,22 +669,22 @@ impl<'a> ParserState<'a> {
         }
     }
 
-    fn consume_until_one_of(&mut self, types: &'static [TokenType]) -> &'a [Token<'a>] {
+    fn consume_until_one_of(&mut self, types: &'static [TokenType]) -> TokenSlice<'a> {
         let consumable_tokens = self.tokens[self.current_index..]
             .split(|token| types.contains(&token.type_))
             .next()
             .expect("split does always return an iterator with at least one element");
         self.advance(consumable_tokens.len());
-        consumable_tokens
+        consumable_tokens.into()
     }
 
-    fn consume_until_none_of(&mut self, types: &'static [TokenType]) -> &'a [Token<'a>] {
+    fn consume_until_none_of(&mut self, types: &'static [TokenType]) -> TokenSlice<'a> {
         let consumable_tokens = self.tokens[self.current_index..]
             .split(|token| !types.contains(&token.type_))
             .next()
             .expect("split does always return an iterator with at least one element");
         self.advance(consumable_tokens.len());
-        consumable_tokens
+        consumable_tokens.into()
     }
 
     fn qualified_type_name(&mut self) -> Result<QualifiedTypeName<'a>, ParserError<'a>> {
@@ -706,7 +701,7 @@ impl<'a> ParserState<'a> {
                 );
                 Err(ParserError::TokenTypeMismatch {
                     expected: &[TokenType::UppercaseIdentifier],
-                    actual: *qualified_name.tokens().last().unwrap(),
+                    actual: qualified_name.tokens().last().unwrap(),
                 })
             }
         }
@@ -728,7 +723,7 @@ impl<'a> ParserState<'a> {
                 );
                 Err(ParserError::TokenTypeMismatch {
                     expected: &[TokenType::LowercaseIdentifier],
-                    actual: *qualified_name.tokens().last().unwrap(),
+                    actual: qualified_name.tokens().last().unwrap(),
                 })
             }
         }
@@ -773,7 +768,7 @@ impl<'a> ParserState<'a> {
         if rest_of_tokens.first().unwrap().type_ == TokenType::UppercaseIdentifier {
             return Ok(QualifiedName::QualifiedTypeName(
                 QualifiedTypeName::Relative {
-                    tokens: &rest_of_tokens[..1],
+                    tokens: TokenSlice::from(&rest_of_tokens[..1]),
                 },
             ));
         }
@@ -802,31 +797,31 @@ impl<'a> ParserState<'a> {
             if tokens[1].type_ != TokenType::LowercaseIdentifier {
                 return Err(ParserError::TokenTypeMismatch {
                     expected: &[TokenType::LowercaseIdentifier],
-                    actual: tokens[1],
+                    actual: &tokens[1],
                 });
             }
         }
 
         Ok(match (is_absolute, is_type_name) {
-            (true, true) => {
-                QualifiedName::QualifiedTypeName(QualifiedTypeName::Absolute { tokens })
-            }
-            (true, false) => {
-                QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Absolute { tokens })
-            }
-            (false, true) => {
-                QualifiedName::QualifiedTypeName(QualifiedTypeName::Relative { tokens })
-            }
-            (false, false) => {
-                QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Relative { tokens })
-            }
+            (true, true) => QualifiedName::QualifiedTypeName(QualifiedTypeName::Absolute {
+                tokens: tokens.into(),
+            }),
+            (true, false) => QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Absolute {
+                tokens: tokens.into(),
+            }),
+            (false, true) => QualifiedName::QualifiedTypeName(QualifiedTypeName::Relative {
+                tokens: tokens.into(),
+            }),
+            (false, false) => QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Relative {
+                tokens: tokens.into(),
+            }),
         })
     }
 
     fn repeated_tokens(
         &mut self,
         sequence: &'static [TokenType],
-    ) -> Result<&'a [Token<'a>], ParserError> {
+    ) -> Result<TokenSlice<'a>, ParserError> {
         assert!(!sequence.is_empty());
         let mut num_tokens = 0;
         let start_index = self.current_index;
@@ -848,13 +843,13 @@ impl<'a> ParserState<'a> {
                 actual: self.current(),
             })
         } else {
-            Ok(&self.tokens[start_index..][..num_tokens])
+            Ok(TokenSlice::from(&self.tokens[start_index..][..num_tokens]))
         }
     }
 }
 
 fn parse<'a>(
-    tokens: &'a [Token<'a>],
+    tokens: TokenSlice<'a>,
     bump_allocator: &'a Bump,
 ) -> Result<Module<'a>, ParserError<'a>> {
     ParserState::new(tokens, bump_allocator).module()
@@ -865,8 +860,7 @@ pub(crate) fn parse_module<'a>(
     source: &'a str,
     bump_allocator: &'a Bump,
 ) -> Result<Module<'a>, Box<dyn ErrorReport + 'a>> {
-    let tokens = tokenize(filename, source)?;
-    let tokens = bump_allocator.alloc_slice_clone(&tokens);
+    let tokens = tokenize(filename, source, bump_allocator)?;
     let module = parse(tokens, bump_allocator)?;
     Ok(module)
 }

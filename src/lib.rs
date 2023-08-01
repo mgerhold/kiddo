@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+#![allow(clippy::result_large_err)]
 #![feature(os_str_bytes)]
 #![feature(ptr_from_ref)]
 #![feature(slice_from_ptr_range)]
