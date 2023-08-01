@@ -50,9 +50,7 @@ pub(crate) fn resolve_data_type<'a>(
     match data_type {
         source_ir::DataType::Named { name } => scope_stack
             .type_lookup(&name.tokens().to_string())
-            .ok_or_else(|| {
-                NameLookupError::CouldNotResolveName(CouldNotResolveName::new(name.tokens()))
-            }),
+            .ok_or_else(|| CouldNotResolveName::new(name.tokens()).into()),
         source_ir::DataType::Pointer {
             mutability,
             pointee_type,
