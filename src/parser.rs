@@ -17,13 +17,13 @@ pub(crate) mod errors;
 pub(crate) mod ir_parsed;
 
 struct ParserState<'a> {
-    tokens: &'a [Token<'a>],
+    tokens: TokenSlice<'a>,
     current_index: usize,
     bump_allocator: &'a Bump,
 }
 
 impl<'a> ParserState<'a> {
-    fn new(tokens: &'a [Token<'a>], bump_allocator: &'a Bump) -> Self {
+    fn new(tokens: TokenSlice<'a>, bump_allocator: &'a Bump) -> Self {
         Self {
             tokens,
             current_index: 0,
@@ -674,22 +674,22 @@ impl<'a> ParserState<'a> {
         }
     }
 
-    fn consume_until_one_of(&mut self, types: &'static [TokenType]) -> &'a [Token<'a>] {
+    fn consume_until_one_of(&mut self, types: &'static [TokenType]) -> TokenSlice<'a> {
         let consumable_tokens = self.tokens[self.current_index..]
             .split(|token| types.contains(&token.type_))
             .next()
             .expect("split does always return an iterator with at least one element");
         self.advance(consumable_tokens.len());
-        consumable_tokens
+        consumable_tokens.into()
     }
 
-    fn consume_until_none_of(&mut self, types: &'static [TokenType]) -> &'a [Token<'a>] {
+    fn consume_until_none_of(&mut self, types: &'static [TokenType]) -> TokenSlice<'a> {
         let consumable_tokens = self.tokens[self.current_index..]
             .split(|token| !types.contains(&token.type_))
             .next()
             .expect("split does always return an iterator with at least one element");
         self.advance(consumable_tokens.len());
-        consumable_tokens
+        consumable_tokens.into()
     }
 
     fn qualified_type_name(&mut self) -> Result<QualifiedTypeName<'a>, ParserError<'a>> {
@@ -826,7 +826,7 @@ impl<'a> ParserState<'a> {
     fn repeated_tokens(
         &mut self,
         sequence: &'static [TokenType],
-    ) -> Result<&'a [Token<'a>], ParserError> {
+    ) -> Result<TokenSlice<'a>, ParserError> {
         assert!(!sequence.is_empty());
         let mut num_tokens = 0;
         let start_index = self.current_index;
@@ -848,13 +848,13 @@ impl<'a> ParserState<'a> {
                 actual: self.current(),
             })
         } else {
-            Ok(&self.tokens[start_index..][..num_tokens])
+            Ok(TokenSlice::from(&self.tokens[start_index..][..num_tokens]))
         }
     }
 }
 
 fn parse<'a>(
-    tokens: &'a [Token<'a>],
+    tokens: TokenSlice<'a>,
     bump_allocator: &'a Bump,
 ) -> Result<Module<'a>, ParserError<'a>> {
     ParserState::new(tokens, bump_allocator).module()

@@ -5,6 +5,7 @@ use bumpalo::Bump;
 use unicode_xid::UnicodeXID;
 
 use crate::parser::errors::{print_error, ErrorReport};
+use crate::parser::ir_parsed::TokenSlice;
 use crate::token::{SourceLocation, Token, TokenType};
 
 #[derive(Debug)]
@@ -160,7 +161,7 @@ pub(crate) fn tokenize<'a>(
     filename: &'a Path,
     source: &'a str,
     bump_allocator: &'a Bump,
-) -> Result<&'a [Token<'a>], LexerError<'a>> {
+) -> Result<TokenSlice<'a>, LexerError<'a>> {
     let mut state = LexerState::new(filename, source)?;
     let mut tokens: Vec<Token> = Vec::new();
     while !state.is_end_of_input() {
@@ -513,5 +514,7 @@ pub(crate) fn tokenize<'a>(
         type_: TokenType::EndOfInput,
     });
 
-    Ok(bump_allocator.alloc_slice_clone(&tokens))
+    Ok(TokenSlice::from(
+        &*bump_allocator.alloc_slice_clone(&tokens),
+    ))
 }
