@@ -9,3 +9,6 @@ import ::std::containers::list;
 from ::std::containers::list import List as Queue;
 
 export function print() { }
+
+export function f() { }
+// export function f(param: U32) { }

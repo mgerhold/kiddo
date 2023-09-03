@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use bumpalo::Bump;
 
-use crate::import_resolution::representations::ModulesWithConnectedImports;
+use crate::import_resolution::representations::{ConnectedImport, ModulesWithConnectedImports};
 use crate::name_lookup::errors::{CouldNotResolveName, NameLookupError};
 use crate::name_lookup::ir_after_name_lookup as target_ir;
 use crate::parser::ir_parsed as source_ir;
@@ -166,7 +166,7 @@ pub(crate) fn perform_name_lookup<'a>(
 
         // imports that import a single symbol (already connected)
         for import in module.connected_imports {
-            let imported_name_token = match import.import {
+            let imported_name_token = match import.import() {
                 source_ir::Import::FromImport { symbol, .. } => symbol.token(),
                 source_ir::Import::FromImportAs { as_, .. } => as_.token(),
                 _ => unreachable!(),
@@ -178,16 +178,20 @@ pub(crate) fn perform_name_lookup<'a>(
             }
             assert_eq!(imported_name_token.type_, TokenType::UppercaseIdentifier);
 
-            if let source_ir::Definition::Struct(struct_definition) = import.definition {
-                let resolved_data_type = bump_allocator.alloc(target_ir::ResolvedDataType::Named {
-                    name: target_ir::ResolvedTypeName::Struct(struct_definition),
-                });
-                let insertion_result =
-                    types.insert(imported_name_token.lexeme().to_string(), resolved_data_type);
-                assert!(insertion_result.is_none());
-            } else {
-                unreachable!();
+            let ConnectedImport::Struct {
+                definition: struct_definition,
+                ..
+            } = import
+            else {
+                unreachable!()
             };
+
+            let resolved_data_type = bump_allocator.alloc(target_ir::ResolvedDataType::Named {
+                name: target_ir::ResolvedTypeName::Struct(*struct_definition),
+            });
+            let insertion_result =
+                types.insert(imported_name_token.lexeme().to_string(), resolved_data_type);
+            assert!(insertion_result.is_none());
         }
 
         // add all type definitions local to the current module

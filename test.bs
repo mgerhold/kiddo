@@ -2,6 +2,7 @@ import ::std::terminal;
 import ::std::terminal as t;
 from std::terminal import print;
 from std::terminal import print as log;
+from std::terminal import print as f;
 import std::containers::dyn_array as darray;
 import std::containers::list as list;
 import std::containers::list as l;
@@ -12,6 +13,7 @@ from ::std::intrinsics import U8;
 from ::std::intrinsics import U32;
 import ::std::string;
 import test;
+from std::terminal import f;
 
 let global0 = global1;
 let global1: U32 = 42;
@@ -55,6 +57,8 @@ struct S6 {
 export function f(this: ->S, n: U32) ~> Nothing {
     //this!.number = this!.number + n;
 }
+
+// function f() { }
 
 function never_returns() ~> Never {
     // loop { }

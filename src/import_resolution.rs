@@ -1,4 +1,4 @@
-use std::collections::{HashSet, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::Deref;
 use std::path::{Path, PathBuf};
 
@@ -16,7 +16,7 @@ use crate::import_resolution::representations::{
 use crate::lexer::LexerError;
 use crate::parser::errors::ErrorReport;
 use crate::parser::ir_parsed::{
-    Import, Module, QualifiedName, QualifiedNonTypeName, QualifiedTypeName,
+    Definition, Import, Module, QualifiedName, QualifiedNonTypeName, QualifiedTypeName,
 };
 use crate::parser::parse_module;
 use crate::token::TokenType;
@@ -357,8 +357,6 @@ fn check_imports_for_module<'a>(
     let connected_imports =
         connect_imports(module_with_resolved_imports_and_exports, bump_allocator)?;
 
-    check_against_clashes_with_local_definitions(module_with_resolved_imports_and_exports)?;
-
     check_against_duplicate_namespace_imports(module_with_resolved_imports_and_exports)?;
 
     check_capitalization_of_renamed_imports(module_with_resolved_imports_and_exports)?;
@@ -399,6 +397,7 @@ fn connect_imports<'a>(
     bump_allocator: &'a Bump,
 ) -> Result<&'a [ConnectedImport<'a>], ImportError<'a>> {
     let mut connected_imports = Vec::new();
+    let mut function_overload_sets: HashMap<_, (_, Vec<_>)> = HashMap::new();
     for resolved_import in module_with_resolved_imports_and_exports.imports {
         let symbol_to_import = resolved_import.import.imported_symbol();
         if symbol_to_import.is_none() {
@@ -413,11 +412,26 @@ fn connect_imports<'a>(
             .cloned()
             .find(|definition| definition.identifier().token().lexeme() == name_to_import);
 
+        let mut overload_set = function_overload_sets
+            .entry(name_to_import)
+            .insert_entry((resolved_import.import, Vec::new()));
+
         match definition {
-            Some(definition) => connected_imports.push(ConnectedImport {
-                import: resolved_import.import,
-                definition,
-            }),
+            Some(Definition::Struct(definition)) => {
+                connected_imports.push(ConnectedImport::Struct {
+                    import: resolved_import.import,
+                    definition,
+                })
+            }
+            Some(Definition::Function(definition)) => {
+                overload_set.get_mut().1.push(definition);
+            }
+            Some(Definition::GlobalVariable(definition)) => {
+                connected_imports.push(ConnectedImport::GlobalVariable {
+                    import: resolved_import.import,
+                    definition,
+                })
+            }
             None => {
                 let non_exported_definition =
                     source_module
@@ -436,6 +450,16 @@ fn connect_imports<'a>(
                 });
             }
         }
+    }
+    for (_, (resolved_import, overload_set)) in function_overload_sets {
+        if overload_set.is_empty() {
+            continue;
+        }
+        let overload_set = bump_allocator.alloc_slice_copy(&overload_set);
+        connected_imports.push(ConnectedImport::Function {
+            import: resolved_import,
+            definitions: overload_set,
+        });
     }
     Ok(bump_allocator.alloc_slice_copy(&connected_imports))
 }
@@ -524,7 +548,6 @@ pub(crate) fn perform_import_resolution<'a>(
 ) -> Result<ModulesWithConnectedImports<'a>, Box<dyn ErrorReport + 'a>> {
     Ok(
         find_all_imports(main_module, import_directories, bump_allocator)?
-            .check_against_duplicate_identifier_definitions()?
             .gather_all_exports(bump_allocator)
             .resolve_all_imports(bump_allocator)
             .check_imports(bump_allocator)?,

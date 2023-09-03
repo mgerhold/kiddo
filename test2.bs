@@ -1,0 +1,2 @@
+from std::terminal import print as f;
+from std::terminal import f;

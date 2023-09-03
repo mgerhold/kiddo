@@ -3,6 +3,7 @@
 #![feature(os_str_bytes)]
 #![feature(ptr_from_ref)]
 #![feature(slice_from_ptr_range)]
+#![feature(entry_insert)]
 
 use bumpalo::Bump;
 

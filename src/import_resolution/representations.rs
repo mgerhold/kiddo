@@ -1,7 +1,9 @@
 use std::fmt::{Debug, Formatter};
 use std::path::Path;
 
-use crate::parser::ir_parsed::{Definition, Import, Module};
+use crate::parser::ir_parsed::{
+    Definition, FunctionDefinition, GlobalVariableDefinition, Import, Module, StructDefinition,
+};
 
 pub(crate) type ModuleImports<'a> = &'a [(Import<'a>, &'a Path)];
 pub(crate) type ModulesWithImports<'a> = &'a [ModuleWithImports<'a>];
@@ -40,9 +42,28 @@ pub(crate) struct ModuleWithResolvedImportsAndExports<'a> {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ConnectedImport<'a> {
-    pub(crate) import: Import<'a>,
-    pub(crate) definition: Definition<'a>,
+pub enum ConnectedImport<'a> {
+    Struct {
+        import: Import<'a>,
+        definition: StructDefinition<'a>,
+    },
+    Function {
+        import: Import<'a>,
+        definitions: &'a [FunctionDefinition<'a>],
+    },
+    GlobalVariable {
+        import: Import<'a>,
+        definition: GlobalVariableDefinition<'a>,
+    },
+}
+
+impl<'a> ConnectedImport<'a> {
+    pub(crate) fn import(&self) -> Import<'a> {
+        let (ConnectedImport::Struct { import, .. }
+        | ConnectedImport::Function { import, .. }
+        | ConnectedImport::GlobalVariable { import, .. }) = self;
+        *import
+    }
 }
 
 #[derive(Clone, Copy)]
