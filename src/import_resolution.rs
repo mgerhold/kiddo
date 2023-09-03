@@ -7,16 +7,14 @@ use bumpalo::Bump;
 pub use representations::ModuleWithImports;
 
 use crate::constants::SOURCE_FILE_EXTENSION;
-use crate::import_resolution::errors::{DuplicateIdentifiersError, ImportError};
+use crate::import_resolution::errors::ImportError;
 use crate::import_resolution::representations::{
-    ConnectedImport, ModuleImports, ModuleWithConnectedImports, ModuleWithImportsAndExports,
-    ModuleWithResolvedImportsAndExports, ModulesWithConnectedImports, ModulesWithImports,
-    ModulesWithImportsAndExports, ModulesWithResolvedImportsAndExports, ResolvedImport,
+    ConnectedImport, ConnectedModule, ConnectedModules, ModuleImports,
 };
 use crate::lexer::LexerError;
 use crate::parser::errors::ErrorReport;
 use crate::parser::ir_parsed::{
-    Definition, Import, Module, QualifiedName, QualifiedNonTypeName, QualifiedTypeName,
+    Import, Module, QualifiedName, QualifiedNonTypeName, QualifiedTypeName,
 };
 use crate::parser::parse_module;
 use crate::token::TokenType;
@@ -147,76 +145,34 @@ pub(crate) fn find_imports<'a>(
                 }
             })?,
         );
-        imports.push((*import, path));
+        imports.push((import, path));
     }
     let imports = bump_allocator.alloc_slice_copy(&imports);
     Ok(imports)
-}
-
-trait CheckAgainstDuplicateIdentifierDefinitions<'a> {
-    fn check_against_duplicate_identifier_definitions(
-        self,
-    ) -> Result<ModulesWithImports<'a>, Box<dyn ErrorReport + 'a>>;
-}
-
-impl<'a> CheckAgainstDuplicateIdentifierDefinitions<'a> for ModulesWithImports<'a> {
-    fn check_against_duplicate_identifier_definitions(
-        self,
-    ) -> Result<ModulesWithImports<'a>, Box<dyn ErrorReport + 'a>> {
-        for module_with_imports in self {
-            for (i, (current_import, _)) in module_with_imports.imports.iter().enumerate() {
-                let Some(imported_symbol) = current_import.as_what() else {
-                    continue;
-                };
-                for (import, _) in &module_with_imports.imports[..i] {
-                    let Some(symbol) = import.as_what() else {
-                        continue;
-                    };
-                    if imported_symbol == symbol {
-                        return Err(Box::new(ImportError::DoublyImportedSymbol {
-                            import: *current_import,
-                            previous_import: *import,
-                        }));
-                    }
-                }
-            }
-        }
-
-        for module_with_imports in self {
-            for (i, current_definition) in module_with_imports.module.definitions.iter().enumerate()
-            {
-                for definition in &module_with_imports.module.definitions[..i] {
-                    if current_definition.identifier().token().lexeme()
-                        == definition.identifier().token().lexeme()
-                    {
-                        return Err(Box::new(DuplicateIdentifiersError {
-                            definition: *current_definition,
-                            previous_definition: *definition,
-                        }));
-                    }
-                }
-            }
-        }
-        Ok(self)
-    }
 }
 
 fn find_all_imports<'a>(
     main_module: ModuleWithImports<'a>,
     import_directories: &[&Path],
     bump_allocator: &'a Bump,
-) -> Result<ModulesWithImports<'a>, Box<dyn ErrorReport + 'a>> {
+) -> Result<HashMap<&'a Path, (&'a Module<'a>, ModuleImports<'a>)>, Box<dyn ErrorReport + 'a>> {
     let mut processed_files = HashSet::new();
     processed_files.insert(main_module.canonical_path.deref().to_owned());
 
-    let mut files_to_process: VecDeque<_> =
-        main_module.imports.iter().map(|(_, path)| *path).collect();
+    let mut files_to_process: VecDeque<_> = main_module.imports.iter().collect();
 
-    let mut all_modules = vec![main_module];
+    let mut all_modules: HashMap<&'a Path, (&'a Module<'a>, ModuleImports<'a>)> = HashMap::new();
+    all_modules.insert(
+        main_module.canonical_path,
+        (
+            bump_allocator.alloc(main_module.module),
+            main_module.imports,
+        ),
+    );
 
     while !files_to_process.is_empty() {
-        let next_filename = files_to_process.pop_back().expect("queue is not empty");
-        if processed_files.contains(next_filename) {
+        let (_, next_filename) = files_to_process.pop_back().expect("queue is not empty");
+        if processed_files.contains(*next_filename) {
             continue;
         }
 
@@ -240,271 +196,17 @@ fn find_all_imports<'a>(
 
         processed_files.insert(canonical_filename.deref().to_owned());
 
-        files_to_process.extend(imports.iter().map(|(_, path)| *path));
+        files_to_process.extend(imports.iter());
 
-        all_modules.push(ModuleWithImports {
-            canonical_path: canonical_filename,
-            module,
-            imports,
-        });
+        debug_assert!(!all_modules.contains_key(canonical_filename));
+        all_modules.insert(canonical_filename, (bump_allocator.alloc(module), imports));
     }
-
-    let all_modules = bump_allocator.alloc_slice_copy(&all_modules);
 
     Ok(all_modules)
 }
 
-trait ResolveAllImports<'a> {
-    fn resolve_all_imports(
-        self,
-        bump_allocator: &'a Bump,
-    ) -> ModulesWithResolvedImportsAndExports<'a>;
-}
-
-impl<'a> ResolveAllImports<'a> for ModulesWithImportsAndExports<'a> {
-    fn resolve_all_imports(
-        self,
-        bump_allocator: &'a Bump,
-    ) -> ModulesWithResolvedImportsAndExports<'a> {
-        let modules_with_resolved_imports: Vec<_> = self
-            .iter()
-            .map(|module| resolve_imports(*module, self, bump_allocator))
-            .collect();
-        bump_allocator.alloc_slice_copy(&modules_with_resolved_imports)
-    }
-}
-
-fn resolve_imports<'a>(
-    module_with_imports_and_exports: ModuleWithImportsAndExports<'a>,
-    all_modules: ModulesWithImportsAndExports<'a>,
-    bump_allocator: &'a Bump,
-) -> ModuleWithResolvedImportsAndExports<'a> {
-    let resolved_imports: Vec<_> = module_with_imports_and_exports
-        .imports
-        .iter()
-        .map(|(import, path)| ResolvedImport {
-            import: *import,
-            from_module: module_by_canonical_path(path, all_modules)
-                .expect("path has been found before"),
-        })
-        .collect();
-    let resolved_imports = bump_allocator.alloc_slice_copy(&resolved_imports);
-    ModuleWithResolvedImportsAndExports {
-        canonical_path: module_with_imports_and_exports.canonical_path,
-        module: module_with_imports_and_exports.module,
-        imports: resolved_imports,
-        exported_definitions: module_with_imports_and_exports.exported_definitions,
-    }
-}
-
-trait GatherAllExports<'a> {
-    fn gather_all_exports(self, bump_allocator: &'a Bump) -> ModulesWithImportsAndExports;
-}
-
-impl<'a> GatherAllExports<'a> for ModulesWithImports<'a> {
-    fn gather_all_exports(self, bump_allocator: &'a Bump) -> ModulesWithImportsAndExports {
-        let result: Vec<_> = self
-            .iter()
-            .map(|module| gather_exports(*module, bump_allocator))
-            .collect();
-        bump_allocator.alloc_slice_copy(&result)
-    }
-}
-
-fn gather_exports<'a>(
-    module_with_imports: ModuleWithImports<'a>,
-    bump_allocator: &'a Bump,
-) -> ModuleWithImportsAndExports<'a> {
-    let exports: Vec<_> = module_with_imports
-        .module
-        .definitions
-        .iter()
-        .filter(|definition| definition.is_exported())
-        .copied()
-        .collect();
-    ModuleWithImportsAndExports {
-        canonical_path: module_with_imports.canonical_path,
-        module: module_with_imports.module,
-        imports: module_with_imports.imports,
-        exported_definitions: bump_allocator.alloc_slice_copy(&exports),
-    }
-}
-
-trait CheckImports<'a> {
-    fn check_imports(
-        self,
-        bump_allocator: &'a Bump,
-    ) -> Result<ModulesWithConnectedImports<'a>, ImportError<'a>>;
-}
-
-impl<'a> CheckImports<'a> for ModulesWithResolvedImportsAndExports<'a> {
-    fn check_imports(
-        self,
-        bump_allocator: &'a Bump,
-    ) -> Result<ModulesWithConnectedImports<'a>, ImportError<'a>> {
-        let modules_with_connected_imports: Result<Vec<_>, _> = self
-            .iter()
-            .map(|module| check_imports_for_module(*module, bump_allocator))
-            .collect();
-        Ok(bump_allocator.alloc_slice_copy(&(modules_with_connected_imports?)))
-    }
-}
-
-fn check_imports_for_module<'a>(
-    module_with_resolved_imports_and_exports: ModuleWithResolvedImportsAndExports<'a>,
-    bump_allocator: &'a Bump,
-) -> Result<ModuleWithConnectedImports<'a>, ImportError<'a>> {
-    let connected_imports =
-        connect_imports(module_with_resolved_imports_and_exports, bump_allocator)?;
-
-    check_against_duplicate_namespace_imports(module_with_resolved_imports_and_exports)?;
-
-    check_capitalization_of_renamed_imports(module_with_resolved_imports_and_exports)?;
-
-    Ok(ModuleWithConnectedImports {
-        canonical_path: module_with_resolved_imports_and_exports.canonical_path,
-        module: module_with_resolved_imports_and_exports.module,
-        resolved_imports: module_with_resolved_imports_and_exports.imports,
-        connected_imports,
-    })
-}
-
-fn check_against_clashes_with_local_definitions(
-    module_with_resolved_imports_and_exports: ModuleWithResolvedImportsAndExports,
-) -> Result<(), ImportError> {
-    for resolved_import in module_with_resolved_imports_and_exports.imports {
-        let Some(imported_as) = resolved_import.import.as_what() else {
-            continue;
-        };
-        if let Some(definition) = module_with_resolved_imports_and_exports
-            .module
-            .definitions
-            .iter()
-            .copied()
-            .find(|definition| definition.identifier() == imported_as)
-        {
-            return Err(ImportError::ImportedClashWithLocalDefinition {
-                import: resolved_import.import,
-                local_definition_with_same_identifier: definition,
-            });
-        }
-    }
-    Ok(())
-}
-
-fn connect_imports<'a>(
-    module_with_resolved_imports_and_exports: ModuleWithResolvedImportsAndExports<'a>,
-    bump_allocator: &'a Bump,
-) -> Result<&'a [ConnectedImport<'a>], ImportError<'a>> {
-    let mut connected_imports = Vec::new();
-    let mut function_overload_sets: HashMap<_, (_, Vec<_>)> = HashMap::new();
-    for resolved_import in module_with_resolved_imports_and_exports.imports {
-        let symbol_to_import = resolved_import.import.imported_symbol();
-        if symbol_to_import.is_none() {
-            continue;
-        }
-        let symbol_to_import = symbol_to_import.unwrap();
-        let name_to_import = symbol_to_import.token().lexeme();
-        let source_module = resolved_import.from_module;
-        let definition = source_module
-            .exported_definitions
-            .iter()
-            .cloned()
-            .find(|definition| definition.identifier().token().lexeme() == name_to_import);
-
-        let mut overload_set = function_overload_sets
-            .entry(name_to_import)
-            .insert_entry((resolved_import.import, Vec::new()));
-
-        match definition {
-            Some(Definition::Struct(definition)) => {
-                connected_imports.push(ConnectedImport::Struct {
-                    import: resolved_import.import,
-                    definition,
-                })
-            }
-            Some(Definition::Function(definition)) => {
-                overload_set.get_mut().1.push(definition);
-            }
-            Some(Definition::GlobalVariable(definition)) => {
-                connected_imports.push(ConnectedImport::GlobalVariable {
-                    import: resolved_import.import,
-                    definition,
-                })
-            }
-            None => {
-                let non_exported_definition =
-                    source_module
-                        .module
-                        .definitions
-                        .iter()
-                        .find_map(|definition| {
-                            (definition.identifier().token().lexeme() == name_to_import)
-                                .then_some(*definition)
-                        });
-                return Err(ImportError::SymbolNotFound {
-                    imported_module: resolved_import.from_module,
-                    symbol_token: symbol_to_import,
-                    import_path: resolved_import.import.what_or_where(),
-                    non_exported_definition,
-                });
-            }
-        }
-    }
-    for (_, (resolved_import, overload_set)) in function_overload_sets {
-        if overload_set.is_empty() {
-            continue;
-        }
-        let overload_set = bump_allocator.alloc_slice_copy(&overload_set);
-        connected_imports.push(ConnectedImport::Function {
-            import: resolved_import,
-            definitions: overload_set,
-        });
-    }
-    Ok(bump_allocator.alloc_slice_copy(&connected_imports))
-}
-
-fn check_against_duplicate_namespace_imports(
-    module_with_resolved_imports_and_exports: ModuleWithResolvedImportsAndExports,
-) -> Result<(), ImportError> {
-    for (i, resolved_import) in module_with_resolved_imports_and_exports
-        .imports
-        .iter()
-        .enumerate()
-    {
-        match resolved_import.import.imported_namespace() {
-            Some(qualified_name_or_identifier) => {
-                let duplicate_import = module_with_resolved_imports_and_exports.imports[..i]
-                    .iter()
-                    .filter_map(|resolved_import| {
-                        resolved_import
-                            .import
-                            .imported_namespace()
-                            .map(|namespace| (*resolved_import, namespace))
-                    })
-                    .find(|(_, imported_namespace)| {
-                        *imported_namespace == qualified_name_or_identifier
-                    });
-                if let Some((duplicate_import, _)) = duplicate_import {
-                    return Err(ImportError::DuplicateImport {
-                        import: *resolved_import,
-                        previous_import: duplicate_import,
-                    });
-                }
-            }
-            None => {
-                continue;
-            }
-        }
-    }
-    Ok(())
-}
-
-fn check_capitalization_of_renamed_imports(
-    module: ModuleWithResolvedImportsAndExports,
-) -> Result<(), ImportError> {
-    for resolved_import in module.imports {
-        let import = resolved_import.import;
+fn check_capitalization_of_renamed_imports<'a>(module: &'a Module) -> Result<(), ImportError<'a>> {
+    for import in module.imports {
         let (expected_token_type, actual_token, hint_location) = match import {
             Import::Import { .. } | Import::FromImport { .. } => {
                 continue;
@@ -532,24 +234,34 @@ fn check_capitalization_of_renamed_imports(
     Ok(())
 }
 
-fn module_by_canonical_path<'a>(
-    canonical_path: &'a Path,
-    all_modules: ModulesWithImportsAndExports<'a>,
-) -> Option<ModuleWithImportsAndExports<'a>> {
-    all_modules
-        .iter()
-        .find_map(|module| (module.canonical_path == canonical_path).then_some(*module))
-}
-
-pub(crate) fn perform_import_resolution<'a>(
+pub(crate) fn connect_modules<'a>(
     main_module: ModuleWithImports<'a>,
     import_directories: &[&Path],
     bump_allocator: &'a Bump,
-) -> Result<ModulesWithConnectedImports<'a>, Box<dyn ErrorReport + 'a>> {
-    Ok(
-        find_all_imports(main_module, import_directories, bump_allocator)?
-            .gather_all_exports(bump_allocator)
-            .resolve_all_imports(bump_allocator)
-            .check_imports(bump_allocator)?,
-    )
+) -> Result<ConnectedModules<'a>, Box<dyn ErrorReport + 'a>> {
+    let all_modules = find_all_imports(main_module, import_directories, bump_allocator)?;
+
+    for (module, _) in all_modules.values() {
+        check_capitalization_of_renamed_imports(module)?;
+    }
+
+    let mut connected_modules = Vec::new();
+    for (path, (module, imports)) in &all_modules {
+        let connected_imports: Vec<_> = imports
+            .iter()
+            .map(|(import, path)| ConnectedImport {
+                import: import,
+                target_module: all_modules.get(*path).expect("all imports were resolved").0,
+                target_module_path: path,
+            })
+            .collect();
+        let connected_imports = bump_allocator.alloc_slice_copy(&connected_imports);
+        connected_modules.push(ConnectedModule {
+            canonical_path: path,
+            imports: connected_imports,
+            definitions: module.definitions,
+        });
+    }
+    let connected_modules = bump_allocator.alloc_slice_copy(&connected_modules);
+    Ok(connected_modules)
 }

@@ -1,16 +1,10 @@
-use std::fmt::{Debug, Formatter};
+use std::fmt::{Debug, Formatter, Write};
 use std::path::Path;
 
-use crate::parser::ir_parsed::{
-    Definition, FunctionDefinition, GlobalVariableDefinition, Import, Module, StructDefinition,
-};
+use crate::parser::ir_parsed::{Definition, Import, Module};
 
-pub(crate) type ModuleImports<'a> = &'a [(Import<'a>, &'a Path)];
+pub(crate) type ModuleImports<'a> = &'a [(&'a Import<'a>, &'a Path)];
 pub(crate) type ModulesWithImports<'a> = &'a [ModuleWithImports<'a>];
-pub(crate) type ModulesWithResolvedImportsAndExports<'a> =
-    &'a [ModuleWithResolvedImportsAndExports<'a>];
-pub(crate) type ModulesWithImportsAndExports<'a> = &'a [ModuleWithImportsAndExports<'a>];
-pub type ModulesWithConnectedImports<'a> = &'a [ModuleWithConnectedImports<'a>];
 
 #[derive(Debug, Clone, Copy)]
 pub struct ModuleWithImports<'a> {
@@ -19,70 +13,47 @@ pub struct ModuleWithImports<'a> {
     pub(crate) imports: ModuleImports<'a>,
 }
 
+pub(crate) type ConnectedModules<'a> = &'a [ConnectedModule<'a>];
+
 #[derive(Debug, Clone, Copy)]
-pub struct ModuleWithImportsAndExports<'a> {
+pub(crate) struct ConnectedModule<'a> {
     pub(crate) canonical_path: &'a Path,
-    pub(crate) module: Module<'a>,
-    pub(crate) imports: ModuleImports<'a>,
-    pub(crate) exported_definitions: &'a [Definition<'a>],
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct ResolvedImport<'a> {
-    pub(crate) import: Import<'a>,
-    pub(crate) from_module: ModuleWithImportsAndExports<'a>,
-}
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct ModuleWithResolvedImportsAndExports<'a> {
-    pub(crate) canonical_path: &'a Path,
-    pub(crate) module: Module<'a>,
-    pub(crate) imports: &'a [ResolvedImport<'a>],
-    pub(crate) exported_definitions: &'a [Definition<'a>],
-}
-
-#[derive(Debug, Clone, Copy)]
-pub enum ConnectedImport<'a> {
-    Struct {
-        import: Import<'a>,
-        definition: StructDefinition<'a>,
-    },
-    Function {
-        import: Import<'a>,
-        definitions: &'a [FunctionDefinition<'a>],
-    },
-    GlobalVariable {
-        import: Import<'a>,
-        definition: GlobalVariableDefinition<'a>,
-    },
-}
-
-impl<'a> ConnectedImport<'a> {
-    pub(crate) fn import(&self) -> Import<'a> {
-        let (ConnectedImport::Struct { import, .. }
-        | ConnectedImport::Function { import, .. }
-        | ConnectedImport::GlobalVariable { import, .. }) = self;
-        *import
-    }
+    pub(crate) imports: &'a [ConnectedImport<'a>],
+    pub(crate) definitions: &'a [Definition<'a>],
 }
 
 #[derive(Clone, Copy)]
-pub struct ModuleWithConnectedImports<'a> {
-    pub(crate) canonical_path: &'a Path,
-    pub(crate) module: Module<'a>,
-    pub(crate) resolved_imports: &'a [ResolvedImport<'a>],
-    pub(crate) connected_imports: &'a [ConnectedImport<'a>],
+pub(crate) struct ConnectedImport<'a> {
+    pub(crate) import: &'a Import<'a>,
+    pub(crate) target_module: &'a Module<'a>,
+    pub(crate) target_module_path: &'a Path,
 }
 
-impl Debug for ModuleWithConnectedImports<'_> {
+impl Debug for ConnectedImport<'_> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("ModuleWithConnectedImports")
-            .field(
-                "filename",
-                &self.canonical_path.file_name().unwrap().to_string_lossy(),
-            )
-            .field("module", &self.module)
-            .field("imports", &self.connected_imports)
-            .finish()
+        match self.import {
+            Import::Import { what } => f.write_fmt(format_args!("import {}", what.tokens())),
+            Import::ImportAs { what, as_ } => f.write_fmt(format_args!(
+                "import {} as {}",
+                what.tokens(),
+                as_.as_string()
+            )),
+            Import::FromImport { where_, symbol } => f.write_fmt(format_args!(
+                "from {} import {}",
+                where_.tokens(),
+                symbol.as_string()
+            )),
+            Import::FromImportAs {
+                where_,
+                symbol,
+                as_,
+            } => f.write_fmt(format_args!(
+                "from {} import {} as {}",
+                where_.tokens(),
+                symbol.as_string(),
+                as_.as_string()
+            )),
+        }?;
+        f.write_fmt(format_args!(" ({})", self.target_module_path.display()))
     }
 }

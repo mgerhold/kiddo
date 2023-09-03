@@ -9,8 +9,7 @@ use bumpalo::Bump;
 
 pub use crate::command_line_arguments::CommandLineArguments;
 use crate::helpers::{gather_import_directories, get_canonical_path_to_main_module};
-use crate::import_resolution::{find_imports, perform_import_resolution, ModuleWithImports};
-use crate::name_lookup::perform_name_lookup;
+use crate::import_resolution::{connect_modules, find_imports, ModuleWithImports};
 use crate::parser::errors::ErrorReport;
 use crate::parser::parse_module;
 use crate::utils::AllocPath;
@@ -65,14 +64,14 @@ pub fn main<'a>(
         imports: main_module_imports,
     };
 
-    let all_modules = perform_import_resolution(main_module, import_directories, bump_allocator)?;
+    let all_modules = connect_modules(main_module, import_directories, bump_allocator)?;
 
     if let Some(ast_output_path) = command_line_args.ast_output_path {
         let ast = format!("{:#?}", &all_modules);
         std::fs::write(ast_output_path, ast).unwrap();
     }
 
-    let after_lookup = perform_name_lookup(all_modules, bump_allocator)?;
+    // let after_lookup = perform_name_lookup(all_modules, bump_allocator)?;
 
     // dbg!(all_modules);
 

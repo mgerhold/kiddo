@@ -1,4 +1,4 @@
-use std::fmt::{Display, Formatter};
+use std::fmt::{Debug, Display, Formatter, Write};
 use std::ops::Deref;
 use std::path::PathBuf;
 
@@ -116,7 +116,7 @@ impl<'a> Import<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub enum Definition<'a> {
     Struct(StructDefinition<'a>),
     Function(FunctionDefinition<'a>),
@@ -147,6 +147,22 @@ impl Definition<'_> {
     }
 }
 
+impl Debug for Definition<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Definition::Struct(struct_definition) => {
+                f.write_fmt(format_args!("{}", struct_definition))
+            }
+            Definition::Function(function_definition) => {
+                f.write_fmt(format_args!("{}", function_definition))
+            }
+            Definition::GlobalVariable(global_variable_definition) => {
+                f.write_fmt(format_args!("{}", global_variable_definition))
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct StructDefinition<'a> {
     pub(crate) is_exported: bool,
@@ -154,13 +170,54 @@ pub struct StructDefinition<'a> {
     pub(crate) members: &'a [StructMember<'a>],
 }
 
-#[derive(Debug, Clone, Copy)]
+impl Display for StructDefinition<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.is_exported {
+            write!(f, "export ")?;
+        }
+        write!(f, "struct {} {{ ", self.name.0.lexeme())?;
+        if !self.members.is_empty() {
+            writeln!(f)?;
+        }
+        for member in self.members {
+            writeln!(f, "    {:#?}", member)?;
+        }
+        write!(f, "}}")
+    }
+}
+
+#[derive(Clone, Copy)]
 pub struct FunctionDefinition<'a> {
     pub(crate) is_exported: bool,
     pub(crate) name: NonTypeIdentifier<'a>,
     pub(crate) parameters: &'a [FunctionParameter<'a>],
     pub(crate) return_type: Option<DataType<'a>>,
     pub(crate) body: Block<'a>,
+}
+
+impl Display for FunctionDefinition<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.is_exported {
+            write!(f, "export ")?;
+        }
+        write!(f, "function {}(", self.name.0.lexeme())?;
+        for parameter in self.parameters {
+            write!(
+                f,
+                "\n    {}: {},",
+                parameter.name.0.lexeme(),
+                parameter.type_.tokens()
+            )?;
+        }
+        if !self.parameters.is_empty() {
+            writeln!(f)?;
+        }
+        write!(f, ") ")?;
+        if let Some(return_type) = self.return_type {
+            write!(f, "~> {} ", return_type.tokens())?;
+        }
+        write!(f, "{}", self.body)
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -178,6 +235,19 @@ pub struct GlobalVariableDefinition<'a> {
     pub(crate) initial_value: Expression<'a>,
 }
 
+impl Display for GlobalVariableDefinition<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.is_exported {
+            write!(f, "export ")?;
+        }
+        write!(f, "let {} {}", self.mutability, self.name.0.lexeme())?;
+        if let Some(data_type) = self.type_ {
+            write!(f, ": {}", data_type.tokens())?;
+        }
+        write!(f, " = {};", self.initial_value)
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct LocalVariableDefinition<'a> {
     pub(crate) mutability: Mutability,
@@ -186,10 +256,29 @@ pub(crate) struct LocalVariableDefinition<'a> {
     pub(crate) initial_value: Expression<'a>,
 }
 
+impl Display for LocalVariableDefinition<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "let {} {}", self.mutability, self.name.0.lexeme())?;
+        if let Some(data_type) = self.type_ {
+            write!(f, ": {}", data_type.tokens())?;
+        }
+        write!(f, " = {};", self.initial_value)
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Mutability {
     Constant,
     Mutable,
+}
+
+impl Display for Mutability {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Mutability::Constant => write!(f, "const"),
+            Mutability::Mutable => write!(f, "mut"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -268,10 +357,16 @@ impl<'a> DataType<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Clone, Copy)]
 pub(crate) struct StructMember<'a> {
     pub(crate) name: NonTypeIdentifier<'a>,
     pub(crate) type_: DataType<'a>,
+}
+
+impl Debug for StructMember<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {},", self.name.0.lexeme(), self.type_.tokens())
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -279,9 +374,31 @@ pub(crate) struct Block<'a> {
     pub(crate) statements: &'a [Statement<'a>],
 }
 
+impl Display for Block<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        if self.statements.is_empty() {
+            write!(f, "{{ }}")
+        } else {
+            writeln!(f, "{{")?;
+            for statement in self.statements {
+                writeln!(f, "    {}", statement)?;
+            }
+            write!(f, "}}")
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Literal<'a> {
     Integer(&'a Token<'a>),
+}
+
+impl Display for Literal<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Literal::Integer(token) => write!(f, "{}", token.lexeme()),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -296,6 +413,19 @@ pub(crate) enum Expression<'a> {
     Name(QualifiedNonTypeName<'a>),
 }
 
+impl Display for Expression<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Expression::Literal(literal) => write!(f, "{literal}"),
+            Expression::BinaryOperator { lhs, operator, rhs } => {
+                write!(f, "{lhs} {} {rhs}", operator.lexeme())
+            }
+            Expression::Block(block) => write!(f, "{block}"),
+            Expression::Name(name) => write!(f, "{}", name.tokens()),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Statement<'a> {
     #[allow(clippy::enum_variant_names)]
@@ -303,6 +433,18 @@ pub(crate) enum Statement<'a> {
     Yield(Expression<'a>),
     Return(Option<Expression<'a>>),
     VariableDefinition(LocalVariableDefinition<'a>),
+}
+
+impl Display for Statement<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Statement::ExpressionStatement(expression) => write!(f, "{expression};"),
+            Statement::Yield(expression) => write!(f, "yield {expression};"),
+            Statement::Return(Some(expression)) => write!(f, "return {expression};"),
+            Statement::Return(None) => write!(f, "return;"),
+            Statement::VariableDefinition(definition) => write!(f, "{definition}"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy)]

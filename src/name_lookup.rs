@@ -2,11 +2,9 @@ use std::collections::HashMap;
 
 use bumpalo::Bump;
 
-use crate::import_resolution::representations::{ConnectedImport, ModulesWithConnectedImports};
 use crate::name_lookup::errors::{CouldNotResolveName, NameLookupError};
 use crate::name_lookup::ir_after_name_lookup as target_ir;
 use crate::parser::ir_parsed as source_ir;
-use crate::token::TokenType;
 
 pub(crate) mod errors;
 pub(crate) mod ir_after_name_lookup;
@@ -123,7 +121,7 @@ pub(crate) fn resolve_data_type<'a>(
     }
 }
 
-pub(crate) fn perform_name_lookup<'a>(
+/*pub(crate) fn perform_name_lookup<'a>(
     modules: ModulesWithConnectedImports<'a>,
     bump_allocator: &'a Bump,
 ) -> Result<target_ir::Program<'a>, NameLookupError<'a>> {
@@ -252,3 +250,4 @@ pub(crate) fn perform_name_lookup<'a>(
 
     Ok(target_ir::Program { definitions: &[] })
 }
+*/

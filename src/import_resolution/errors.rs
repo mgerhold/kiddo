@@ -1,8 +1,7 @@
 use std::path::{Path, PathBuf};
 
-use crate::import_resolution::{ModuleWithImportsAndExports, ResolvedImport};
 use crate::parser::errors::{print_error, print_note, ErrorReport};
-use crate::parser::ir_parsed::{Definition, Identifier, Import, QualifiedName};
+use crate::parser::ir_parsed::{Definition, Import, QualifiedName};
 use crate::token::{SourceLocation, Token, TokenType};
 
 #[derive(Debug)]
@@ -45,20 +44,20 @@ pub enum ImportError<'a> {
         import_path: QualifiedName<'a>,
         path_to_search: PathBuf,
     },
-    SymbolNotFound {
+    /*SymbolNotFound {
         imported_module: ModuleWithImportsAndExports<'a>,
         import_path: QualifiedName<'a>,
         symbol_token: Identifier<'a>,
         non_exported_definition: Option<Definition<'a>>,
-    },
+    },*/
     ImportedClashWithLocalDefinition {
         import: Import<'a>,
         local_definition_with_same_identifier: Definition<'a>,
     },
-    DuplicateImport {
+    /*DuplicateImport {
         import: ResolvedImport<'a>,
         previous_import: ResolvedImport<'a>,
-    },
+    },*/
     UnableToCanonicalize {
         path: &'a Path,
     },
@@ -99,7 +98,7 @@ impl ErrorReport for ImportError<'_> {
                     output_filename,
                 );
             }
-            ImportError::SymbolNotFound {
+            /*ImportError::SymbolNotFound {
                 imported_module,
                 import_path,
                 symbol_token,
@@ -124,7 +123,7 @@ impl ErrorReport for ImportError<'_> {
                         output_filename,
                     );
                 }
-            }
+            }*/
             ImportError::ImportedClashWithLocalDefinition {
                 import,
                 local_definition_with_same_identifier,
@@ -145,7 +144,7 @@ impl ErrorReport for ImportError<'_> {
                     output_filename,
                 );
             }
-            ImportError::DuplicateImport {
+            /*ImportError::DuplicateImport {
                 import,
                 previous_import,
             } => {
@@ -165,7 +164,7 @@ impl ErrorReport for ImportError<'_> {
                     "module imported here",
                     output_filename,
                 );
-            }
+            }*/
             ImportError::UnableToCanonicalize { path } => {
                 eprintln!("error: unable to canonicalize path '{}'", path.display());
             }
