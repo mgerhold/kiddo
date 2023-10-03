@@ -13,8 +13,8 @@ pub(crate) trait AllocPath {
 impl AllocPath for Bump {
     fn alloc_path(&self, path: impl AsRef<Path>) -> &Path {
         Path::new(unsafe {
-            OsStr::from_os_str_bytes_unchecked(
-                self.alloc_slice_copy(path.as_ref().as_os_str().as_os_str_bytes()),
+            OsStr::from_encoded_bytes_unchecked(
+                self.alloc_slice_copy(path.as_ref().as_os_str().as_encoded_bytes()),
             )
         })
     }

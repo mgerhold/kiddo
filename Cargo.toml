@@ -3,15 +3,14 @@ name = "kiddo"
 version = "0.1.0"
 edition = "2021"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
 ariadne = "0.3.0"
-bumpalo = "3.13.0"
+bumpalo = { version = "3.14.0", features = ["allocator-api2", "collections"] }
 clap = { version = "4.3.12", features = ["derive"] }
 num-traits = "0.2.15"
 unicode-width = "0.1.10"
 unicode-xid = "0.2.4"
+hashbrown = { version = "0.14.0", features = ["allocator-api2"] }
 
 [dev-dependencies]
 insta = { version = "1.31.0", features = ["yaml"] }

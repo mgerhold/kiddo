@@ -12,3 +12,5 @@ export function print() { }
 
 export function f() { }
 // export function f(param: U32) { }
+
+export let cout = 10;

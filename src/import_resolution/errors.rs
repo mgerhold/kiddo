@@ -1,7 +1,10 @@
 use std::path::{Path, PathBuf};
 
+use crate::import_resolution::representations::{
+    NonTypeDefinition, TypeDefinition, TypeDefinitionKind,
+};
 use crate::parser::errors::{print_error, print_note, ErrorReport};
-use crate::parser::ir_parsed::{Definition, Import, QualifiedName};
+use crate::parser::ir_parsed::{Definition, Identifier, Import, QualifiedName};
 use crate::token::{SourceLocation, Token, TokenType};
 
 #[derive(Debug)]
@@ -35,6 +38,136 @@ impl ErrorReport for DuplicateIdentifiersError<'_> {
 }
 
 #[derive(Debug)]
+pub enum NameError<'a> {
+    DuplicateTypeName {
+        name: &'a str,
+        previous_type_definition: &'a TypeDefinition<'a>,
+        current_type_definition: &'a TypeDefinition<'a>,
+    },
+    DuplicateNonTypeName {
+        name: &'a str,
+        previous_definition: &'a NonTypeDefinition<'a>,
+        current_definition: &'a NonTypeDefinition<'a>,
+    },
+}
+
+enum PrintStyle {
+    Error,
+    Note,
+}
+
+impl NameError<'_> {
+    fn print_duplicate_type_name(
+        type_definition: &TypeDefinition,
+        message: &str,
+        output_filename: Option<&Path>,
+        print_style: PrintStyle,
+    ) {
+        let print_function = match print_style {
+            PrintStyle::Error => print_error,
+            PrintStyle::Note => print_note,
+        };
+
+        if let Some(import) = type_definition.origin {
+            print_function(
+                &import.source_location(),
+                message,
+                "type definition imported here",
+                output_filename,
+            );
+        } else {
+            let source_location = match type_definition.definition {
+                TypeDefinitionKind::Struct(struct_definition) => {
+                    struct_definition.name.0.source_location
+                }
+            };
+            print_function(
+                &source_location,
+                message,
+                "type defined here",
+                output_filename,
+            );
+        };
+    }
+}
+
+impl ErrorReport for NameError<'_> {
+    fn print_report(&self, output_filename: Option<&Path>) {
+        match self {
+            NameError::DuplicateTypeName {
+                name,
+                previous_type_definition: previous_definition,
+                current_type_definition: current_definition,
+            } => {
+                Self::print_duplicate_type_name(
+                    current_definition,
+                    &format!("duplicate type '{name}' found"),
+                    output_filename,
+                    PrintStyle::Error,
+                );
+
+                Self::print_duplicate_type_name(
+                    previous_definition,
+                    &format!("type '{name}' already imported here"),
+                    output_filename,
+                    PrintStyle::Note,
+                );
+            }
+            NameError::DuplicateNonTypeName {
+                name,
+                previous_definition,
+                current_definition,
+            } => {
+                match current_definition {
+                    NonTypeDefinition::GlobalVariable { origin, definition } => {
+                        if let Some(import) = origin {
+                            print_error(
+                                &import.source_location(),
+                                format!("redefinition of global variable '{name}'"),
+                                "global variable is imported here",
+                                output_filename,
+                            );
+                        } else {
+                            print_error(
+                                &definition.name.0.source_location,
+                                format!("redefinition of global variable '{name}'"),
+                                "global variable is defined here",
+                                output_filename,
+                            );
+                        }
+                    }
+                    NonTypeDefinition::Function(_) => {
+                        todo!()
+                    }
+                };
+                match previous_definition {
+                    NonTypeDefinition::GlobalVariable { origin, definition } => {
+                        if let Some(import) = origin {
+                            print_note(
+                                &import.source_location(),
+                                format!("global variable '{name}' was already defined"),
+                                "global variable is imported here",
+                                output_filename,
+                            );
+                        } else {
+                            print_note(
+                                &definition.name.0.source_location,
+                                format!("global variable '{name}' was already defined"),
+                                "global variable is defined here",
+                                output_filename,
+                            );
+                        }
+                    }
+                    NonTypeDefinition::Function(_) => {
+                        todo!()
+                    }
+                };
+            }
+        }
+    }
+}
+
+#[derive(Debug)]
 #[allow(clippy::large_enum_variant)] // ¯\_(ツ)_/¯
 pub enum ImportError<'a> {
     ImportPathNotFound {
@@ -44,20 +177,16 @@ pub enum ImportError<'a> {
         import_path: QualifiedName<'a>,
         path_to_search: PathBuf,
     },
-    /*SymbolNotFound {
-        imported_module: ModuleWithImportsAndExports<'a>,
+    SymbolNotFound {
+        imported_module_path: &'a Path,
         import_path: QualifiedName<'a>,
         symbol_token: Identifier<'a>,
         non_exported_definition: Option<Definition<'a>>,
-    },*/
+    },
     ImportedClashWithLocalDefinition {
         import: Import<'a>,
         local_definition_with_same_identifier: Definition<'a>,
     },
-    /*DuplicateImport {
-        import: ResolvedImport<'a>,
-        previous_import: ResolvedImport<'a>,
-    },*/
     UnableToCanonicalize {
         path: &'a Path,
     },
@@ -98,8 +227,8 @@ impl ErrorReport for ImportError<'_> {
                     output_filename,
                 );
             }
-            /*ImportError::SymbolNotFound {
-                imported_module,
+            ImportError::SymbolNotFound {
+                imported_module_path,
                 import_path,
                 symbol_token,
                 non_exported_definition,
@@ -109,7 +238,7 @@ impl ErrorReport for ImportError<'_> {
                     format!(
                         "module '{}' (in '{}') does not export symbol '{}'",
                         import_path,
-                        imported_module.canonical_path.display(),
+                        imported_module_path.display(),
                         symbol_token.token().lexeme()
                     ),
                     "symbol not found",
@@ -123,7 +252,7 @@ impl ErrorReport for ImportError<'_> {
                         output_filename,
                     );
                 }
-            }*/
+            }
             ImportError::ImportedClashWithLocalDefinition {
                 import,
                 local_definition_with_same_identifier,

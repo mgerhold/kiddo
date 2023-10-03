@@ -103,7 +103,7 @@ impl<'a> ParserState<'a> {
                 })
             }
             _ => {
-                let imports = self.bump_allocator.alloc_slice_copy(&imports);
+                let imports = self.bump_allocator.alloc_slice_clone(&imports);
                 let definitions = self.bump_allocator.alloc_slice_copy(&definitions);
                 Ok(Module {
                     imports,
@@ -150,10 +150,14 @@ impl<'a> ParserState<'a> {
                 let what = self.qualified_name()?;
                 match self.consume(TokenType::As) {
                     Some(_) => Import::ImportAs {
+                        import_token: token,
                         what,
                         as_: self.identifier()?,
                     },
-                    None => Import::Import { what },
+                    None => Import::Import {
+                        import_token: token,
+                        what,
+                    },
                 }
             }
             TokenType::From => {
@@ -162,11 +166,16 @@ impl<'a> ParserState<'a> {
                 let symbol = self.identifier()?;
                 match self.consume(TokenType::As) {
                     Some(_) => Import::FromImportAs {
+                        from_token: token,
                         where_,
                         symbol,
                         as_: self.identifier()?,
                     },
-                    None => Import::FromImport { where_, symbol },
+                    None => Import::FromImport {
+                        from_token: token,
+                        where_,
+                        symbol,
+                    },
                 }
             }
             _ => unreachable!(),
@@ -296,7 +305,7 @@ impl<'a> ParserState<'a> {
         self.expect(TokenType::RightParenthesis)?;
 
         let return_type = if self.consume(TokenType::TildeArrow).is_some() {
-            Some(self.data_type()?)
+            Some(&*self.bump_allocator.alloc(self.data_type()?))
         } else {
             None
         };
@@ -320,12 +329,12 @@ impl<'a> ParserState<'a> {
         GlobalVariableDefinition:
             (definition=LocalVariableDefinition)
          */
-        let definition = self.local_variable_definition()?;
+        let definition = &*self.bump_allocator.alloc(self.local_variable_definition()?);
         Ok(GlobalVariableDefinition {
             is_exported,
             mutability: definition.mutability,
             name: definition.name,
-            type_: definition.type_,
+            type_: definition.type_.as_ref(),
             initial_value: definition.initial_value,
         })
     }

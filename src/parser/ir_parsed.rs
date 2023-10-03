@@ -1,14 +1,33 @@
-use std::fmt::{Debug, Display, Formatter, Write};
+use std::fmt;
+use std::fmt::{Debug, Display, Formatter};
+use std::iter::Filter;
 use std::ops::Deref;
 use std::path::PathBuf;
+use std::slice::Iter;
 
 use crate::constants::BackseatSize;
 use crate::token::{SourceLocation, Token, TokenType};
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Module<'a> {
+pub struct Module<'a> {
     pub(crate) imports: &'a [Import<'a>],
     pub(crate) definitions: &'a [Definition<'a>],
+}
+
+impl Module<'_> {
+    pub(crate) fn exported_definitions(
+        &self,
+    ) -> Filter<Iter<Definition>, fn(&&Definition) -> bool> {
+        self.definitions
+            .iter()
+            .filter(|definition| definition.is_exported())
+    }
+
+    pub(crate) fn private_definitions(&self) -> Filter<Iter<Definition>, fn(&&Definition) -> bool> {
+        self.definitions
+            .iter()
+            .filter(|definition| !definition.is_exported())
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -58,21 +77,25 @@ impl<'a> QualifiedNameOrIdentifier<'a> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 #[allow(clippy::enum_variant_names)]
 pub enum Import<'a> {
     Import {
+        import_token: &'a Token<'a>,
         what: QualifiedName<'a>,
     },
     ImportAs {
+        import_token: &'a Token<'a>,
         what: QualifiedName<'a>,
         as_: Identifier<'a>,
     },
     FromImport {
+        from_token: &'a Token<'a>,
         where_: QualifiedName<'a>,
         symbol: Identifier<'a>,
     },
     FromImportAs {
+        from_token: &'a Token<'a>,
         where_: QualifiedName<'a>,
         symbol: Identifier<'a>,
         as_: Identifier<'a>,
@@ -89,34 +112,77 @@ impl<'a> Import<'a> {
         }
     }
 
-    pub(crate) fn what_or_where(self) -> QualifiedName<'a> {
+    pub(crate) fn what_or_where(&self) -> QualifiedName<'a> {
         match self {
-            Import::Import { what, .. } => what,
-            Import::ImportAs { what, .. } => what,
-            Import::FromImport { where_, .. } => where_,
-            Import::FromImportAs { where_, .. } => where_,
+            Import::Import { what, .. } => *what,
+            Import::ImportAs { what, .. } => *what,
+            Import::FromImport { where_, .. } => *where_,
+            Import::FromImportAs { where_, .. } => *where_,
         }
     }
 
-    pub(crate) fn as_what(self) -> Option<Identifier<'a>> {
+    pub(crate) fn as_what(&self) -> Option<Identifier<'a>> {
         match self {
             Import::Import { .. } => None,
-            Import::ImportAs { as_, .. } => Some(as_),
-            Import::FromImport { symbol, .. } => Some(symbol),
-            Import::FromImportAs { as_, .. } => Some(as_),
+            Import::ImportAs { as_, .. } => Some(*as_),
+            Import::FromImport { symbol, .. } => Some(*symbol),
+            Import::FromImportAs { as_, .. } => Some(*as_),
         }
     }
 
     pub(crate) fn imported_namespace(self) -> Option<QualifiedNameOrIdentifier<'a>> {
         match self {
-            Import::Import { what } => Some(QualifiedNameOrIdentifier::QualifiedName(what)),
+            Import::Import { what, .. } => Some(QualifiedNameOrIdentifier::QualifiedName(what)),
             Import::ImportAs { as_, .. } => Some(QualifiedNameOrIdentifier::Identifier(as_)),
             Import::FromImport { .. } | Import::FromImportAs { .. } => None,
         }
     }
+
+    pub(crate) fn source_location(&self) -> SourceLocation<'a> {
+        match self {
+            Import::Import { import_token, what } => {
+                let first_token_address = std::ptr::from_ref(*import_token);
+                let last_token_address = std::ptr::from_ref(what.tokens().last().unwrap());
+                let token_slice = unsafe {
+                    std::slice::from_ptr_range(first_token_address..last_token_address.offset(1))
+                };
+                TokenSlice(token_slice).source_location()
+            }
+            Import::ImportAs {
+                import_token, as_, ..
+            } => {
+                let first_token_address = std::ptr::from_ref(*import_token);
+                let last_token_address = std::ptr::from_ref(as_.token());
+                let token_slice = unsafe {
+                    std::slice::from_ptr_range(first_token_address..last_token_address.offset(1))
+                };
+                TokenSlice(token_slice).source_location()
+            }
+            Import::FromImport {
+                from_token, symbol, ..
+            } => {
+                let first_token_address = std::ptr::from_ref(*from_token);
+                let last_token_address = std::ptr::from_ref(symbol.token());
+                let token_slice = unsafe {
+                    std::slice::from_ptr_range(first_token_address..last_token_address.offset(1))
+                };
+                TokenSlice(token_slice).source_location()
+            }
+            Import::FromImportAs {
+                from_token, as_, ..
+            } => {
+                let first_token_address = std::ptr::from_ref(*from_token);
+                let last_token_address = std::ptr::from_ref(as_.token());
+                let token_slice = unsafe {
+                    std::slice::from_ptr_range(first_token_address..last_token_address.offset(1))
+                };
+                TokenSlice(token_slice).source_location()
+            }
+        }
+    }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum Definition<'a> {
     Struct(StructDefinition<'a>),
     Function(FunctionDefinition<'a>),
@@ -147,8 +213,8 @@ impl Definition<'_> {
     }
 }
 
-impl Debug for Definition<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+impl Display for Definition<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Definition::Struct(struct_definition) => {
                 f.write_fmt(format_args!("{}", struct_definition))
@@ -171,7 +237,7 @@ pub struct StructDefinition<'a> {
 }
 
 impl Display for StructDefinition<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if self.is_exported {
             write!(f, "export ")?;
         }
@@ -186,37 +252,45 @@ impl Display for StructDefinition<'_> {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct FunctionDefinition<'a> {
     pub(crate) is_exported: bool,
     pub(crate) name: NonTypeIdentifier<'a>,
     pub(crate) parameters: &'a [FunctionParameter<'a>],
-    pub(crate) return_type: Option<DataType<'a>>,
+    pub(crate) return_type: Option<&'a DataType<'a>>,
     pub(crate) body: Block<'a>,
 }
 
-impl Display for FunctionDefinition<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+impl FunctionDefinition<'_> {
+    fn fmt_multiline(&self, f: &mut Formatter<'_>, indent: usize) -> fmt::Result {
+        let indent_str = "\t".repeat(indent);
         if self.is_exported {
-            write!(f, "export ")?;
+            write!(f, "{indent_str}export ")?;
         }
         write!(f, "function {}(", self.name.0.lexeme())?;
         for parameter in self.parameters {
             write!(
                 f,
-                "\n    {}: {},",
+                "\n{indent_str}    {}: {},",
                 parameter.name.0.lexeme(),
                 parameter.type_.tokens()
             )?;
         }
         if !self.parameters.is_empty() {
             writeln!(f)?;
+            write!(f, "{indent_str}")?;
         }
         write!(f, ") ")?;
         if let Some(return_type) = self.return_type {
             write!(f, "~> {} ", return_type.tokens())?;
         }
-        write!(f, "{}", self.body)
+        self.body.fmt_multiline(f, indent + 1)
+    }
+}
+
+impl Display for FunctionDefinition<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.fmt_multiline(f, 0)
     }
 }
 
@@ -231,12 +305,12 @@ pub struct GlobalVariableDefinition<'a> {
     pub(crate) is_exported: bool,
     pub(crate) mutability: Mutability,
     pub(crate) name: NonTypeIdentifier<'a>,
-    pub(crate) type_: Option<DataType<'a>>,
+    pub(crate) type_: Option<&'a DataType<'a>>,
     pub(crate) initial_value: Expression<'a>,
 }
 
 impl Display for GlobalVariableDefinition<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         if self.is_exported {
             write!(f, "export ")?;
         }
@@ -257,7 +331,7 @@ pub(crate) struct LocalVariableDefinition<'a> {
 }
 
 impl Display for LocalVariableDefinition<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "let {} {}", self.mutability, self.name.0.lexeme())?;
         if let Some(data_type) = self.type_ {
             write!(f, ": {}", data_type.tokens())?;
@@ -273,10 +347,10 @@ pub(crate) enum Mutability {
 }
 
 impl Display for Mutability {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Mutability::Constant => write!(f, "const"),
-            Mutability::Mutable => write!(f, "mut"),
+            Mutability::Mutable => write!(f, "mutable"),
         }
     }
 }
@@ -313,7 +387,7 @@ pub(crate) enum DataType<'a> {
 impl<'a> DataType<'a> {
     pub(crate) fn tokens(&self) -> TokenSlice<'a> {
         match self {
-            DataType::Named { name } => name.tokens(),
+            DataType::Named { name, .. } => name.tokens(),
             DataType::Pointer {
                 arrow_token,
                 pointee_type,
@@ -364,7 +438,7 @@ pub(crate) struct StructMember<'a> {
 }
 
 impl Debug for StructMember<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}: {},", self.name.0.lexeme(), self.type_.tokens())
     }
 }
@@ -374,17 +448,25 @@ pub(crate) struct Block<'a> {
     pub(crate) statements: &'a [Statement<'a>],
 }
 
-impl Display for Block<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+impl Block<'_> {
+    fn fmt_multiline(&self, f: &mut Formatter<'_>, indent: usize) -> fmt::Result {
+        let indent_str = "\t".repeat(indent);
         if self.statements.is_empty() {
             write!(f, "{{ }}")
         } else {
             writeln!(f, "{{")?;
             for statement in self.statements {
-                writeln!(f, "    {}", statement)?;
+                statement.fmt_multiline(f, indent + 1)?;
+                writeln!(f)?;
             }
-            write!(f, "}}")
+            write!(f, "{indent_str}}}")
         }
+    }
+}
+
+impl Display for Block<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.fmt_multiline(f, 0)
     }
 }
 
@@ -394,7 +476,7 @@ pub(crate) enum Literal<'a> {
 }
 
 impl Display for Literal<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Literal::Integer(token) => write!(f, "{}", token.lexeme()),
         }
@@ -414,7 +496,7 @@ pub(crate) enum Expression<'a> {
 }
 
 impl Display for Expression<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         match self {
             Expression::Literal(literal) => write!(f, "{literal}"),
             Expression::BinaryOperator { lhs, operator, rhs } => {
@@ -435,15 +517,22 @@ pub(crate) enum Statement<'a> {
     VariableDefinition(LocalVariableDefinition<'a>),
 }
 
-impl Display for Statement<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+impl Statement<'_> {
+    fn fmt_multiline(&self, f: &mut Formatter<'_>, indent: usize) -> fmt::Result {
+        let indent_str = "\t".repeat(indent);
         match self {
-            Statement::ExpressionStatement(expression) => write!(f, "{expression};"),
-            Statement::Yield(expression) => write!(f, "yield {expression};"),
-            Statement::Return(Some(expression)) => write!(f, "return {expression};"),
-            Statement::Return(None) => write!(f, "return;"),
-            Statement::VariableDefinition(definition) => write!(f, "{definition}"),
+            Statement::ExpressionStatement(expression) => write!(f, "{indent_str}{expression};"),
+            Statement::Yield(expression) => write!(f, "{indent_str}yield {expression};"),
+            Statement::Return(Some(expression)) => write!(f, "{indent_str}return {expression};"),
+            Statement::Return(None) => write!(f, "{indent_str}return;"),
+            Statement::VariableDefinition(definition) => write!(f, "{indent_str}{definition}"),
         }
+    }
+}
+
+impl Display for Statement<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        self.fmt_multiline(f, 0)
     }
 }
 
@@ -502,7 +591,7 @@ impl<'a> Deref for TokenSlice<'a> {
 }
 
 impl<'a> Display for TokenSlice<'a> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         for token in self.0 {
             write!(f, "{}", token.lexeme())?;
         }
@@ -588,7 +677,7 @@ impl<'a> QualifiedName<'a> {
 }
 
 impl Display for QualifiedName<'_> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         write!(f, "{}", self.tokens())
     }
 }

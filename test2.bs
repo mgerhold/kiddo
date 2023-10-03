@@ -1,2 +1,8 @@
-from std::terminal import print as f;
-from std::terminal import f;
+struct S {
+    t: ->T,
+}
+
+struct T {
+    s: ->S,
+    function_ptr: Function(->[->T; 10], ->S) ~> ->T,
+}

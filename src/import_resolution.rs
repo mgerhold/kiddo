@@ -1,5 +1,4 @@
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::ops::Deref;
 use std::path::{Path, PathBuf};
 
 use bumpalo::Bump;
@@ -7,14 +6,16 @@ use bumpalo::Bump;
 pub use representations::ModuleWithImports;
 
 use crate::constants::SOURCE_FILE_EXTENSION;
-use crate::import_resolution::errors::ImportError;
+use crate::import_resolution::errors::{ImportError, NameError};
 use crate::import_resolution::representations::{
-    ConnectedImport, ConnectedModule, ConnectedModules, ModuleImports,
+    ConnectedImport, ConnectedModule, ConnectedModules, ModuleImports, ModuleWithCategorizedNames,
+    NonTypeDefinition, Overload, ResolvedDefinition, ResolvedModule, TypeDefinition,
+    TypeDefinitionKind,
 };
 use crate::lexer::LexerError;
 use crate::parser::errors::ErrorReport;
 use crate::parser::ir_parsed::{
-    Import, Module, QualifiedName, QualifiedNonTypeName, QualifiedTypeName,
+    Definition, Import, Module, QualifiedName, QualifiedNonTypeName, QualifiedTypeName,
 };
 use crate::parser::parse_module;
 use crate::token::TokenType;
@@ -50,9 +51,11 @@ pub(crate) fn find_imports<'a>(
             Import::Import {
                 what:
                     what @ QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Absolute { .. }),
+                ..
             }
             | Import::Import {
                 what: what @ QualifiedName::QualifiedTypeName(QualifiedTypeName::Absolute { .. }),
+                ..
             }
             | Import::ImportAs {
                 what:
@@ -86,12 +89,14 @@ pub(crate) fn find_imports<'a>(
                     what_or_where @ QualifiedName::QualifiedNonTypeName(QualifiedNonTypeName::Relative {
                         ..
                     }),
+                ..
             }
             | Import::Import {
                 what:
                     what_or_where @ QualifiedName::QualifiedTypeName(QualifiedTypeName::Relative {
                         ..
                     }),
+                ..
             }
             | Import::ImportAs {
                 what:
@@ -151,13 +156,16 @@ pub(crate) fn find_imports<'a>(
     Ok(imports)
 }
 
+type ImportResult<'a> =
+    Result<HashMap<&'a Path, (&'a Module<'a>, ModuleImports<'a>)>, Box<dyn ErrorReport + 'a>>;
+
 fn find_all_imports<'a>(
     main_module: ModuleWithImports<'a>,
     import_directories: &[&Path],
     bump_allocator: &'a Bump,
-) -> Result<HashMap<&'a Path, (&'a Module<'a>, ModuleImports<'a>)>, Box<dyn ErrorReport + 'a>> {
+) -> ImportResult<'a> {
     let mut processed_files = HashSet::new();
-    processed_files.insert(main_module.canonical_path.deref().to_owned());
+    processed_files.insert(main_module.canonical_path.to_owned());
 
     let mut files_to_process: VecDeque<_> = main_module.imports.iter().collect();
 
@@ -194,7 +202,7 @@ fn find_all_imports<'a>(
             bump_allocator,
         )?;
 
-        processed_files.insert(canonical_filename.deref().to_owned());
+        processed_files.insert(canonical_filename.to_owned());
 
         files_to_process.extend(imports.iter());
 
@@ -211,7 +219,7 @@ fn check_capitalization_of_renamed_imports<'a>(module: &'a Module) -> Result<(),
             Import::Import { .. } | Import::FromImport { .. } => {
                 continue;
             }
-            Import::ImportAs { what, as_ } => (
+            Import::ImportAs { what, as_, .. } => (
                 TokenType::LowercaseIdentifier,
                 as_.token(),
                 what.source_location(),
@@ -250,18 +258,209 @@ pub(crate) fn connect_modules<'a>(
         let connected_imports: Vec<_> = imports
             .iter()
             .map(|(import, path)| ConnectedImport {
-                import: import,
+                import,
                 target_module: all_modules.get(*path).expect("all imports were resolved").0,
                 target_module_path: path,
             })
             .collect();
-        let connected_imports = bump_allocator.alloc_slice_copy(&connected_imports);
+        let connected_imports = bump_allocator.alloc_slice_clone(&connected_imports);
         connected_modules.push(ConnectedModule {
             canonical_path: path,
             imports: connected_imports,
             definitions: module.definitions,
         });
     }
-    let connected_modules = bump_allocator.alloc_slice_copy(&connected_modules);
+    let connected_modules = bump_allocator.alloc_slice_clone(&connected_modules);
     Ok(connected_modules)
+}
+
+pub(crate) fn resolve_imports<'a>(
+    modules: ConnectedModules<'a>,
+    bump_allocator: &'a Bump,
+) -> Result<&'a [ResolvedModule<'a>], Box<dyn ErrorReport + 'a>> {
+    let mut resolved_modules = Vec::with_capacity(modules.len());
+    for module in modules {
+        let mut definitions = Vec::new();
+        for connected_import in module.imports {
+            match connected_import.import {
+                Import::Import { what, .. } => {
+                    for definition in connected_import.target_module.exported_definitions() {
+                        let name = bump_allocator.alloc_str(&format!(
+                            "{}::{}",
+                            what.tokens(),
+                            definition.identifier().as_string()
+                        ));
+                        definitions.push(ResolvedDefinition {
+                            name,
+                            definition,
+                            origin: Some(connected_import.import),
+                        })
+                    }
+                }
+                Import::ImportAs { as_, .. } => {
+                    for definition in connected_import.target_module.exported_definitions() {
+                        let name = bump_allocator.alloc_str(&format!(
+                            "{}::{}",
+                            as_.as_string(),
+                            definition.identifier().as_string()
+                        ));
+                        definitions.push(ResolvedDefinition {
+                            name,
+                            definition,
+                            origin: Some(connected_import.import),
+                        })
+                    }
+                }
+                Import::FromImport { where_, symbol, .. } => {
+                    let mut found = false;
+                    for definition in connected_import.target_module.exported_definitions() {
+                        if symbol.token().lexeme() == definition.identifier().token().lexeme() {
+                            found = true;
+                            definitions.push(ResolvedDefinition {
+                                name: symbol.token().lexeme(),
+                                definition,
+                                origin: Some(connected_import.import),
+                            })
+                        }
+                    }
+                    if !found {
+                        return Err(Box::new(ImportError::SymbolNotFound {
+                            imported_module_path: connected_import.target_module_path,
+                            import_path: *where_,
+                            symbol_token: *symbol,
+                            non_exported_definition: connected_import
+                                .target_module
+                                .private_definitions()
+                                .cloned()
+                                .find(|definition| {
+                                    definition.identifier().token().lexeme()
+                                        == symbol.token().lexeme()
+                                }),
+                        }));
+                    }
+                }
+                Import::FromImportAs {
+                    where_,
+                    symbol,
+                    as_,
+                    ..
+                } => {
+                    let mut found = false;
+                    for definition in connected_import.target_module.exported_definitions() {
+                        if symbol.token().lexeme() == definition.identifier().token().lexeme() {
+                            found = true;
+                            definitions.push(ResolvedDefinition {
+                                name: as_.token().lexeme(),
+                                definition,
+                                origin: Some(connected_import.import),
+                            })
+                        }
+                    }
+                    if !found {
+                        return Err(Box::new(ImportError::SymbolNotFound {
+                            imported_module_path: connected_import.target_module_path,
+                            import_path: *where_,
+                            symbol_token: *symbol,
+                            non_exported_definition: connected_import
+                                .target_module
+                                .private_definitions()
+                                .cloned()
+                                .find(|definition| {
+                                    definition.identifier().token().lexeme()
+                                        == symbol.token().lexeme()
+                                }),
+                        }));
+                    }
+                }
+            }
+        }
+
+        for definition in module.definitions {
+            definitions.push(ResolvedDefinition {
+                name: definition.identifier().token().lexeme(),
+                definition,
+                origin: None,
+            });
+        }
+
+        let resolved_definitions = bump_allocator.alloc_slice_clone(&definitions);
+        resolved_modules.push(ResolvedModule {
+            canonical_path: module.canonical_path,
+            definitions: resolved_definitions,
+        });
+    }
+    let resolved_modules = bump_allocator.alloc_slice_clone(&resolved_modules);
+    Ok(resolved_modules)
+}
+
+pub(crate) fn categorize_names<'a>(
+    module: &'a ResolvedModule<'a>,
+    bump_allocator: &'a Bump,
+) -> Result<&'a ModuleWithCategorizedNames<'a>, Box<dyn ErrorReport + 'a>> {
+    let mut type_names: hashbrown::HashMap<&'a str, &'a TypeDefinition<'a>, _, _> =
+        hashbrown::HashMap::new_in(bump_allocator);
+    let mut non_type_names: hashbrown::HashMap<&'a str, &'a NonTypeDefinition<'a>, _, _> =
+        hashbrown::HashMap::new_in(bump_allocator);
+
+    let mut overload_sets: HashMap<_, Vec<_>> = HashMap::new();
+
+    for definition in module.definitions {
+        match definition.definition {
+            Definition::Struct(struct_) => {
+                let type_definition = &*bump_allocator.alloc(TypeDefinition {
+                    origin: definition.origin,
+                    definition: bump_allocator.alloc(TypeDefinitionKind::Struct(struct_)),
+                });
+                if let Some(previous_definition) =
+                    type_names.insert(definition.name, type_definition)
+                {
+                    return Err(Box::new(NameError::DuplicateTypeName {
+                        name: definition.name,
+                        previous_type_definition: previous_definition,
+                        current_type_definition: type_definition,
+                    }));
+                }
+            }
+            Definition::Function(function) => {
+                overload_sets
+                    .entry(definition.name)
+                    .or_default()
+                    .push(&*bump_allocator.alloc(Overload {
+                        origin: definition.origin,
+                        definition: function,
+                    }));
+            }
+            Definition::GlobalVariable(global_variable) => {
+                let global_variable_definition =
+                    &*bump_allocator.alloc(NonTypeDefinition::GlobalVariable {
+                        origin: definition.origin,
+                        definition: global_variable,
+                    });
+                if let Some(previous_definition) =
+                    non_type_names.insert(definition.name, global_variable_definition)
+                {
+                    return Err(Box::new(NameError::DuplicateNonTypeName {
+                        name: definition.name,
+                        previous_definition,
+                        current_definition: global_variable_definition,
+                    }));
+                }
+            }
+        }
+    }
+
+    for (name, overloads) in overload_sets {
+        non_type_names.insert(
+            name,
+            bump_allocator.alloc(NonTypeDefinition::Function(
+                &*bump_allocator.alloc_slice_clone(&overloads),
+            )),
+        );
+    }
+
+    Ok(bump_allocator.alloc(ModuleWithCategorizedNames {
+        canonical_path: module.canonical_path,
+        type_names,
+        non_type_names,
+    }))
 }

@@ -21,7 +21,7 @@ fn get_path(parent_directory_name: &str, filename: &str) -> PathBuf {
 
 fn write_test_file(parent_directory_name: &str, file: TestFile) {
     let path = get_path(parent_directory_name, file.filename);
-    std::fs::write(&path, file.source).unwrap();
+    std::fs::write(path, file.source).unwrap();
 }
 
 fn delete_test_file(parent_directory_name: &str, file: TestFile) {
