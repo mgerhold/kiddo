@@ -468,7 +468,7 @@ pub(crate) fn completely_resolve_type_definitions<'a>(
                         .all(|overload| overload.origin.is_some()));
                     let entry = overload_sets.entry(name).or_default();
                     let mut used_keys = Vec::new();
-                    for (i, overload) in overload_set.iter().enumerate() {
+                    for overload in *overload_set {
                         let key = (
                             overload.definition.name.0.source_location.filename(),
                             overload.definition.name.0.lexeme(),
