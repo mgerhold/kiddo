@@ -296,7 +296,7 @@ impl Display for FunctionDefinition<'_> {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct FunctionParameter<'a> {
-    pub(crate) name: NonTypeIdentifier<'a>,
+    pub(crate) name: &'a NonTypeIdentifier<'a>,
     pub(crate) type_: DataType<'a>,
 }
 
@@ -305,7 +305,7 @@ pub struct GlobalVariableDefinition<'a> {
     pub(crate) is_exported: bool,
     pub(crate) mutability: Mutability,
     pub(crate) name: NonTypeIdentifier<'a>,
-    pub(crate) type_: Option<&'a DataType<'a>>,
+    pub(crate) type_: DataType<'a>,
     pub(crate) initial_value: Expression<'a>,
 }
 
@@ -314,11 +314,14 @@ impl Display for GlobalVariableDefinition<'_> {
         if self.is_exported {
             write!(f, "export ")?;
         }
-        write!(f, "let {} {}", self.mutability, self.name.0.lexeme())?;
-        if let Some(data_type) = self.type_ {
-            write!(f, ": {}", data_type.tokens())?;
-        }
-        write!(f, " = {};", self.initial_value)
+        write!(
+            f,
+            "let {} {}: {} = {};",
+            self.mutability,
+            self.name.0.lexeme(),
+            self.type_.tokens(),
+            self.initial_value
+        )
     }
 }
 

@@ -8,56 +8,42 @@ use crate::import_resolution::representations::{
 };
 use crate::name_lookup::errors::{CouldNotResolveName, NameLookupError};
 use crate::name_lookup::ir_after_name_lookup as target_ir;
+use crate::name_lookup::ir_after_name_lookup::PartiallyResolvedTypeDefinition;
+use crate::name_lookup::target_ir::{
+    CompletelyResolvedFunctionDefinition, CompletelyResolvedFunctionParameter,
+    CompletelyResolvedGlobalVariableDefinition, CompletelyResolvedNonTypeDefinition,
+    CompletelyResolvedTypeDefinition, PartiallyResolvedFunctionDefinition,
+    PartiallyResolvedFunctionParameter, PartiallyResolvedGlobalVariableDefinition,
+    PartiallyResolvedNonTypeDefinition, ProgramWithResolvedTypes,
+};
 use crate::parser::ir_parsed as source_ir;
 
 pub(crate) mod errors;
 pub(crate) mod ir_after_name_lookup;
 
 #[derive(Debug, Clone)]
-pub(crate) struct ScopeStack<'a> {
-    scopes: Vec<Scope<'a>>,
-}
+pub(crate) struct TypeDictionary<'a>(HashMap<String, &'a target_ir::PartiallyResolvedDataType<'a>>);
 
-#[derive(Debug, Clone)]
-pub(crate) struct Scope<'a> {
-    types: HashMap<String, &'a target_ir::PartiallyResolvedDataType<'a>>,
-    values: HashMap<String, &'a target_ir::ResolvedValue<'a>>,
-}
-
-impl<'a> ScopeStack<'a> {
+impl<'a> TypeDictionary<'a> {
     fn type_lookup(&self, name: &str) -> Option<&'a target_ir::PartiallyResolvedDataType<'a>> {
-        for scope in &self.scopes {
-            if let Some(resolved_type) = scope.types.get(name) {
-                return Some(resolved_type);
-            }
-        }
-        None
-    }
-
-    fn value_lookup(&self, name: &str) -> Option<target_ir::ResolvedValue<'a>> {
-        for scope in &self.scopes {
-            if let Some(resolved_value) = scope.values.get(name) {
-                return Some(**resolved_value);
-            }
-        }
-        None
+        self.0.get(name).copied()
     }
 }
 
 pub(crate) fn partially_resolve_data_type<'a>(
     data_type: &'a source_ir::DataType<'a>,
-    scope_stack: &ScopeStack<'a>,
+    type_dictionary: &TypeDictionary<'a>,
     bump_allocator: &'a Bump,
 ) -> Result<&'a target_ir::PartiallyResolvedDataType<'a>, NameLookupError<'a>> {
     match data_type {
-        source_ir::DataType::Named { name } => scope_stack
+        source_ir::DataType::Named { name } => type_dictionary
             .type_lookup(&name.tokens().to_string())
             .ok_or_else(|| CouldNotResolveName::new(name.tokens()).into()),
         source_ir::DataType::Pointer {
             mutability,
             pointee_type,
             ..
-        } => partially_resolve_data_type(pointee_type, scope_stack, bump_allocator)
+        } => partially_resolve_data_type(pointee_type, type_dictionary, bump_allocator)
             .map(|resolved_pointee_type| {
                 &*bump_allocator.alloc(target_ir::PartiallyResolvedDataType::Pointer {
                     mutability: *mutability,
@@ -75,7 +61,7 @@ pub(crate) fn partially_resolve_data_type<'a>(
             contained_type,
             size,
             ..
-        } => partially_resolve_data_type(contained_type, scope_stack, bump_allocator)
+        } => partially_resolve_data_type(contained_type, type_dictionary, bump_allocator)
             .map(|resolved_contained_data_type| {
                 &*bump_allocator.alloc(target_ir::PartiallyResolvedDataType::Array {
                     contained_type: resolved_contained_data_type,
@@ -96,8 +82,11 @@ pub(crate) fn partially_resolve_data_type<'a>(
         } => {
             let mut resolved_parameter_types = Vec::new();
             for parameter in *parameter_list {
-                match partially_resolve_data_type(&parameter.data_type, scope_stack, bump_allocator)
-                {
+                match partially_resolve_data_type(
+                    &parameter.data_type,
+                    type_dictionary,
+                    bump_allocator,
+                ) {
                     Ok(resolved_parameter_type) => {
                         resolved_parameter_types.push(resolved_parameter_type)
                     }
@@ -109,7 +98,7 @@ pub(crate) fn partially_resolve_data_type<'a>(
                 }
             }
 
-            match partially_resolve_data_type(return_type, scope_stack, bump_allocator) {
+            match partially_resolve_data_type(return_type, type_dictionary, bump_allocator) {
                 Ok(resolved_return_type) => Ok(&*bump_allocator.alloc(
                     target_ir::PartiallyResolvedDataType::FunctionPointer {
                         parameter_types: bump_allocator.alloc_slice_copy(&resolved_parameter_types),
@@ -126,7 +115,7 @@ pub(crate) fn partially_resolve_data_type<'a>(
     }
 }
 
-pub(crate) fn partially_resolve_module<'a>(
+pub(crate) fn partially_resolve_type_definitions<'a>(
     module: &'a ModuleWithCategorizedNames<'a>,
     bump_allocator: &'a Bump,
 ) -> Result<target_ir::PartiallyResolvedModule<'a>, NameLookupError<'a>> {
@@ -149,79 +138,14 @@ pub(crate) fn partially_resolve_module<'a>(
         })
         .collect();
 
-    let mut scope_stack = ScopeStack {
-        scopes: vec![Scope {
-            types,
-            values: Default::default(),
-        }],
-    };
+    let type_dictionary = TypeDictionary(types);
 
-    let mut values = HashMap::new();
-    for (name, non_type) in &module.non_type_names {
-        let resolved_value = &*bump_allocator.alloc(match non_type {
-            NonTypeDefinition::GlobalVariable { definition, .. } => {
-                target_ir::ResolvedValue::GlobalVariable(&*bump_allocator.alloc(
-                    ir_after_name_lookup::GlobalVariableDefinition {
-                        mutability: definition.mutability,
-                        name: definition.name,
-                        type_: match definition.type_ {
-                            None => None,
-                            Some(data_type) => Some(partially_resolve_data_type(
-                                data_type,
-                                &scope_stack,
-                                bump_allocator,
-                            )?),
-                        },
-                        initial_value: definition.initial_value,
-                    },
-                ))
-            }
-            NonTypeDefinition::Function(overload_set) => {
-                let mut overloads = Vec::new();
-                for overload in *overload_set {
-                    let mut parameters = Vec::new();
-                    for parameter in overload.definition.parameters {
-                        let type_ = partially_resolve_data_type(
-                            &parameter.type_,
-                            &scope_stack,
-                            bump_allocator,
-                        )?;
-                        let resolved_parameter = target_ir::FunctionParameter {
-                            name: &parameter.name,
-                            type_,
-                        };
-                        parameters.push(resolved_parameter);
-                    }
-                    let parameters = &*bump_allocator.alloc_slice_clone(&parameters);
-
-                    let return_type = match overload.definition.return_type {
-                        Some(type_) => Some(partially_resolve_data_type(
-                            type_,
-                            &scope_stack,
-                            bump_allocator,
-                        )?),
-                        None => None,
-                    };
-
-                    overloads.push(target_ir::FunctionDefinition {
-                        name: overload.definition.name,
-                        parameters,
-                        return_type,
-                        body: overload.definition.body,
-                    })
-                }
-                let overloads = &*bump_allocator.alloc_slice_clone(&overloads);
-                target_ir::ResolvedValue::FunctionOverloadSet(overloads)
-            }
-        });
-        values.insert(name.to_string(), resolved_value);
+    let mut local_non_type_names = hashbrown::HashMap::new_in(bump_allocator);
+    let global_variable_definitions =
+        partially_resolve_non_type_name_data_types(&type_dictionary, module, bump_allocator)?;
+    for (name, definition) in global_variable_definitions {
+        local_non_type_names.insert(name, definition);
     }
-
-    scope_stack
-        .scopes
-        .first_mut()
-        .expect("we inserted the global scope")
-        .values = values;
 
     let local_type_definitions = module
         .type_names
@@ -233,8 +157,11 @@ pub(crate) fn partially_resolve_module<'a>(
             TypeDefinitionKind::Struct(struct_definition) => {
                 let mut partially_resolved_members = Vec::new();
                 for member in struct_definition.members {
-                    let partially_resolved_member_type =
-                        partially_resolve_data_type(&member.type_, &scope_stack, bump_allocator)?;
+                    let partially_resolved_member_type = partially_resolve_data_type(
+                        &member.type_,
+                        &type_dictionary,
+                        bump_allocator,
+                    )?;
                     partially_resolved_members.push(target_ir::PartiallyResolvedStructMember {
                         name: member.name,
                         type_: partially_resolved_member_type,
@@ -265,11 +192,43 @@ pub(crate) fn partially_resolve_module<'a>(
         .map(|(name, type_definition)| (*name, *type_definition))
         .collect_into(&mut imported_type_definitions);
 
+    let mut imported_non_type_definitions = hashbrown::HashMap::new_in(bump_allocator);
+    module
+        .non_type_names
+        .iter()
+        .filter_map(|(name, definition)| match definition {
+            NonTypeDefinition::GlobalVariable(global_variable) => {
+                if global_variable.origin.is_some() {
+                    Some((*name, *definition))
+                } else {
+                    None
+                }
+            }
+            NonTypeDefinition::Function(overload_set) => {
+                let overload_set = &*bump_allocator.alloc_slice_clone(
+                    &overload_set
+                        .iter()
+                        .filter(|overload| overload.origin.is_some())
+                        .copied()
+                        .collect::<Vec<_>>(),
+                );
+                match overload_set.is_empty() {
+                    true => None,
+                    false => Some((
+                        *name,
+                        &*bump_allocator.alloc(NonTypeDefinition::Function(overload_set)),
+                    )),
+                }
+            }
+        })
+        .collect_into(&mut imported_non_type_definitions);
+
     Ok(target_ir::PartiallyResolvedModule {
         canonical_path: module.canonical_path,
         local_type_names: partially_resolved_local_types,
+        local_non_type_names,
         imported_type_names: imported_type_definitions,
-        non_type_names: &module.non_type_names,
+        imported_non_type_names: imported_non_type_definitions,
     })
 }
 
@@ -343,34 +302,325 @@ pub(crate) fn completely_resolve_data_type<'a: 'b, 'b>(
     }
 }
 
-pub(crate) fn completely_resolve_modules<'a>(
+pub(crate) fn completely_resolve_type_definitions<'a>(
     partially_resolved_modules: &'a [target_ir::PartiallyResolvedModule<'a>],
     bump_allocator: &'a Bump,
-) {
-    let type_table = freeze_type_table(
-        generate_intermediate_type_table(partially_resolved_modules, bump_allocator),
-        bump_allocator,
-    );
+) -> &'a ProgramWithResolvedTypes<'a> {
+    let (type_mapping, intermediate_type_table) =
+        generate_intermediate_type_table(partially_resolved_modules, bump_allocator);
+    let type_table = freeze_type_table(intermediate_type_table, bump_allocator);
 
-    println!("{} type definitions", type_table.len());
-    for type_ in type_table {
-        match type_ {
-            target_ir::CompletelyResolvedTypeDefinition::Struct(definition) => {
-                println!(
-                    "{} ({} members)",
-                    definition.name.0.lexeme(),
-                    definition.members.len()
-                );
-                for member in definition.members {
-                    println!(
-                        "\t{}: {}",
-                        member.name.0.lexeme(),
-                        member.type_.to_string(type_table),
+    let mut non_type_mapping = HashMap::new();
+    let mut non_type_table = Vec::new();
+    for module in partially_resolved_modules {
+        for (name, definition) in &module.local_non_type_names {
+            match definition {
+                PartiallyResolvedNonTypeDefinition::GlobalVariable(definition) => {
+                    let resolved_type = completely_resolve_data_type(
+                        definition.type_,
+                        &type_mapping,
+                        bump_allocator,
                     );
+                    non_type_table.push(&*bump_allocator.alloc(
+                        CompletelyResolvedNonTypeDefinition::GlobalVariable(
+                            &*bump_allocator.alloc(CompletelyResolvedGlobalVariableDefinition {
+                                is_exported: definition.is_exported,
+                                mutability: definition.mutability,
+                                name: definition.name,
+                                type_: resolved_type,
+                                initial_value: definition.initial_value,
+                            }),
+                        ),
+                    ));
+                    non_type_mapping
+                        .insert((module.canonical_path, *name), non_type_table.len() - 1);
+                }
+                PartiallyResolvedNonTypeDefinition::Function(overload_set) => {
+                    let resolved_overload_set = &*bump_allocator.alloc_slice_fill_iter(
+                        overload_set.iter().map(|overload| {
+                            let resolved_parameters = &*bump_allocator.alloc_slice_fill_iter(
+                                overload.parameters.iter().map(|parameter| {
+                                    let resolved_type = completely_resolve_data_type(
+                                        parameter.type_,
+                                        &type_mapping,
+                                        bump_allocator,
+                                    );
+                                    &*bump_allocator.alloc(CompletelyResolvedFunctionParameter {
+                                        name: parameter.name,
+                                        type_: resolved_type,
+                                    })
+                                }),
+                            );
+                            let resolved_return_type = overload.return_type.map(|type_| {
+                                completely_resolve_data_type(type_, &type_mapping, bump_allocator)
+                            });
+                            &*bump_allocator.alloc(CompletelyResolvedFunctionDefinition {
+                                name: overload.name,
+                                parameters: resolved_parameters,
+                                return_type: resolved_return_type,
+                                body: overload.body,
+                                is_exported: overload.is_exported,
+                            })
+                        }),
+                    );
+                    non_type_table.push(&*bump_allocator.alloc(
+                        CompletelyResolvedNonTypeDefinition::Function(resolved_overload_set),
+                    ));
+                    non_type_mapping
+                        .insert((module.canonical_path, *name), non_type_table.len() - 1);
                 }
             }
         }
     }
+
+    for module in partially_resolved_modules {
+        let mut type_definitions = HashMap::new();
+        for (name, type_definition) in &module.local_type_names {
+            match type_definition {
+                PartiallyResolvedTypeDefinition::Struct(struct_) => {
+                    type_definitions.insert(
+                        *name,
+                        type_table[*type_mapping
+                            .get(&(
+                                struct_.name.0.source_location.filename(),
+                                struct_.name.0.lexeme(),
+                            ))
+                            .expect("was inserted before")],
+                    );
+                }
+            }
+        }
+
+        for (name, type_definition) in &module.imported_type_names {
+            assert!(type_definition.origin.is_some());
+            match type_definition.definition {
+                TypeDefinitionKind::Struct(definition) => {
+                    type_definitions.insert(
+                        *name,
+                        type_table[*type_mapping
+                            .get(&(
+                                definition.name.0.source_location.filename(),
+                                definition.name.0.lexeme(),
+                            ))
+                            .expect("was inserted before")],
+                    );
+                }
+            }
+        }
+
+        let mut overload_sets: HashMap<_, Vec<_>> = HashMap::new();
+        let mut non_type_definitions = HashMap::new();
+        for (name, non_type_definition) in &module.local_non_type_names {
+            match non_type_definition {
+                PartiallyResolvedNonTypeDefinition::GlobalVariable(definition) => {
+                    let key = (
+                        definition.name.0.source_location.filename(),
+                        definition.name.0.lexeme(),
+                    );
+                    let definition = non_type_table[*non_type_mapping
+                        .get(&key)
+                        .expect("has been inserted before")];
+                    non_type_definitions.insert(*name, definition);
+                }
+                PartiallyResolvedNonTypeDefinition::Function(overload_set) => {
+                    assert!(!overload_set.is_empty());
+                    let key = (
+                        overload_set
+                            .first()
+                            .unwrap()
+                            .name
+                            .0
+                            .source_location
+                            .filename(),
+                        overload_set.first().unwrap().name.0.lexeme(),
+                    );
+                    let resolved_overload_set = non_type_table[non_type_mapping[&key]];
+                    let CompletelyResolvedNonTypeDefinition::Function(resolved_overload_set) =
+                        resolved_overload_set
+                    else {
+                        unreachable!();
+                    };
+                    let entry = overload_sets.entry(*name).or_default();
+                    for overload in *resolved_overload_set {
+                        entry.push(*overload);
+                    }
+                }
+            }
+        }
+
+        for (name, non_type_definition) in &module.imported_non_type_names {
+            match non_type_definition {
+                NonTypeDefinition::GlobalVariable(definition) => {
+                    assert!(definition.origin.is_some());
+                    let key = (
+                        definition.name.0.source_location.filename(),
+                        definition.name.0.lexeme(),
+                    );
+                    let definition = non_type_table[*non_type_mapping
+                        .get(&key)
+                        .expect("has been inserted before")];
+                    non_type_definitions.insert(*name, definition);
+                }
+                NonTypeDefinition::Function(overload_set) => {
+                    assert!(!overload_set.is_empty());
+                    assert!(overload_set
+                        .iter()
+                        .all(|overload| overload.origin.is_some()));
+                    let entry = overload_sets.entry(name).or_default();
+                    let mut used_keys = Vec::new();
+                    for (i, overload) in overload_set.iter().enumerate() {
+                        let key = (
+                            overload.definition.name.0.source_location.filename(),
+                            overload.definition.name.0.lexeme(),
+                        );
+                        if used_keys.iter().any(|k| *k == key) {
+                            continue;
+                        }
+                        used_keys.push(key);
+                        let resolved_overload_set = non_type_table
+                            [*non_type_mapping.get(&key).expect("was inserted before")];
+                        let CompletelyResolvedNonTypeDefinition::Function(resolved_overload_set) =
+                            resolved_overload_set
+                        else {
+                            unreachable!();
+                        };
+                        for resolved_overload in resolved_overload_set
+                            .iter()
+                            .filter(|overload| overload.is_exported)
+                        {
+                            entry.push(resolved_overload);
+                        }
+                    }
+                }
+            }
+        }
+
+        for (name, overload_set) in overload_sets {
+            non_type_definitions.insert(
+                name,
+                &*bump_allocator.alloc(CompletelyResolvedNonTypeDefinition::Function(
+                    &*bump_allocator.alloc_slice_clone(&overload_set),
+                )),
+            );
+        }
+
+        println!(
+            "type definitions available in module '{}'",
+            module.canonical_path.display()
+        );
+        for (name, definition) in type_definitions {
+            println!(
+                "\t{} -> struct {}",
+                name,
+                match definition {
+                    CompletelyResolvedTypeDefinition::Struct(definition) =>
+                        definition.name.0.lexeme(),
+                }
+            );
+        }
+
+        println!(
+            "non-type definitions available in module '{}'",
+            module.canonical_path.display()
+        );
+        for (name, definition) in non_type_definitions {
+            println!("\t{} -> {}", name, definition.to_string(type_table));
+        }
+    }
+
+    let non_type_table = &*bump_allocator.alloc_slice_clone(&non_type_table);
+
+    &*bump_allocator.alloc(ProgramWithResolvedTypes {
+        type_table,
+        non_type_table,
+    })
+}
+
+pub(crate) fn partially_resolve_non_type_name_data_types<'a>(
+    type_dictionary: &TypeDictionary<'a>,
+    module: &'a ModuleWithCategorizedNames<'a>,
+    bump_allocator: &'a Bump,
+) -> Result<HashMap<&'a str, &'a PartiallyResolvedNonTypeDefinition<'a>>, NameLookupError<'a>> {
+    let mut partially_resolved_definitions = HashMap::new();
+
+    for (name, definition) in &module.non_type_names {
+        match definition {
+            NonTypeDefinition::GlobalVariable(definition) => {
+                if definition.origin.is_some() {
+                    continue;
+                }
+                let partially_resolved_type = partially_resolve_data_type(
+                    &definition.type_,
+                    type_dictionary,
+                    bump_allocator,
+                )?;
+                partially_resolved_definitions.insert(
+                    *name,
+                    &*bump_allocator.alloc(PartiallyResolvedNonTypeDefinition::GlobalVariable(
+                        &*bump_allocator.alloc(PartiallyResolvedGlobalVariableDefinition {
+                            is_exported: definition.is_exported,
+                            mutability: definition.mutability,
+                            name: definition.name,
+                            type_: partially_resolved_type,
+                            initial_value: definition.initial_value,
+                        }),
+                    )),
+                );
+            }
+            NonTypeDefinition::Function(overload_set) => {
+                let mut partially_resolved_overload_set = Vec::new();
+                for overload in *overload_set {
+                    if overload.origin.is_some() {
+                        continue;
+                    }
+                    let mut partially_resolved_parameters = Vec::new();
+                    for parameter in overload.definition.parameters {
+                        let partially_resolved_type = partially_resolve_data_type(
+                            &parameter.type_,
+                            type_dictionary,
+                            bump_allocator,
+                        )?;
+                        partially_resolved_parameters.push(&*bump_allocator.alloc(
+                            PartiallyResolvedFunctionParameter {
+                                name: parameter.name,
+                                type_: partially_resolved_type,
+                            },
+                        ));
+                    }
+
+                    let partially_resolved_return_type = overload
+                        .definition
+                        .return_type
+                        .map(|type_| {
+                            partially_resolve_data_type(type_, type_dictionary, bump_allocator)
+                        })
+                        .transpose()?;
+
+                    partially_resolved_overload_set.push(&*bump_allocator.alloc(
+                        PartiallyResolvedFunctionDefinition {
+                            name: overload.definition.name,
+                            parameters:
+                                &*bump_allocator.alloc_slice_clone(&partially_resolved_parameters),
+                            return_type: partially_resolved_return_type,
+                            body: overload.definition.body,
+                            is_exported: overload.definition.is_exported,
+                        },
+                    ))
+                }
+                if partially_resolved_overload_set.is_empty() {
+                    continue;
+                }
+                partially_resolved_definitions.insert(
+                    *name,
+                    &*bump_allocator.alloc(PartiallyResolvedNonTypeDefinition::Function(
+                        &*bump_allocator.alloc_slice_clone(&partially_resolved_overload_set),
+                    )),
+                );
+            }
+        }
+    }
+
+    Ok(partially_resolved_definitions)
 }
 
 fn freeze_type_table<'a>(
@@ -394,7 +644,10 @@ fn freeze_type_table<'a>(
 fn generate_intermediate_type_table<'a>(
     partially_resolved_modules: &'a [target_ir::PartiallyResolvedModule<'a>],
     bump_allocator: &'a Bump,
-) -> &'a [&'a target_ir::AlmostCompletelyResolvedTypeDefinition<'a>] {
+) -> (
+    HashMap<(&'a Path, &'a str), usize>,
+    &'a [&'a target_ir::AlmostCompletelyResolvedTypeDefinition<'a>],
+) {
     let mut intermediate_global_type_table = Vec::new();
     let mut type_mapping = HashMap::new();
     for module in partially_resolved_modules {
@@ -453,10 +706,13 @@ fn generate_intermediate_type_table<'a>(
         }
     }
 
-    bump_allocator.alloc_slice_clone(
-        &intermediate_global_type_table
-            .into_iter()
-            .map(|definition| &*definition)
-            .collect::<Vec<_>>(),
+    (
+        type_mapping,
+        bump_allocator.alloc_slice_clone(
+            &intermediate_global_type_table
+                .into_iter()
+                .map(|definition| &*definition)
+                .collect::<Vec<_>>(),
+        ),
     )
 }

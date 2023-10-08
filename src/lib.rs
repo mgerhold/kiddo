@@ -12,11 +12,10 @@ use bumpalo::Bump;
 
 pub use crate::command_line_arguments::CommandLineArguments;
 use crate::helpers::{gather_import_directories, get_canonical_path_to_main_module};
-use crate::import_resolution::representations::NonTypeDefinition;
 use crate::import_resolution::{
     categorize_names, connect_modules, find_imports, resolve_imports, ModuleWithImports,
 };
-use crate::name_lookup::{completely_resolve_modules, partially_resolve_module};
+use crate::name_lookup::{completely_resolve_type_definitions, partially_resolve_type_definitions};
 use crate::parser::errors::ErrorReport;
 use crate::parser::parse_module;
 use crate::utils::AllocPath;
@@ -79,38 +78,20 @@ pub fn main<'a>(
         std::fs::write(ast_output_path, ast).unwrap();
     }
 
-    let all_modules: Result<Vec<_>, _> = all_modules
+    let all_modules = all_modules
         .iter()
         .map(|module| categorize_names(module, bump_allocator))
-        .collect();
-
-    let all_modules = all_modules?;
-
-    for module in &all_modules {
-        println!("{}", module.canonical_path.display());
-        println!("type names:");
-        for (name, _) in &module.type_names {
-            println!("\t{name}");
-        }
-        println!("non-type names:");
-        for (name, definition) in &module.non_type_names {
-            match definition {
-                NonTypeDefinition::GlobalVariable { .. } => println!("\t{name}"),
-                NonTypeDefinition::Function(overload_set) => {
-                    println!("\t{name} ({} overload(s))", overload_set.len())
-                }
-            }
-        }
-    }
+        .collect::<Result<Vec<_>, _>>()?;
 
     let all_modules = all_modules
         .iter()
-        .map(|module| partially_resolve_module(module, bump_allocator))
+        .map(|module| partially_resolve_type_definitions(module, bump_allocator))
         .collect::<Result<Vec<_>, _>>()?;
 
     let all_modules = &*bump_allocator.alloc_slice_clone(&all_modules);
 
-    let all_modules = completely_resolve_modules(all_modules, bump_allocator);
+    let program_with_resolved_types =
+        completely_resolve_type_definitions(all_modules, bump_allocator);
 
     // let after_lookup = perform_name_lookup(all_modules, bump_allocator)?;
 

@@ -1,8 +1,9 @@
-struct S {
-    t: ->T,
-}
+from test3 import f;
+from test3 import print as f;
+import test3;
+import ::test3;
+from test3 import U32;
 
-struct T {
-    s: ->S,
-    function_ptr: Function(->[->T; 10], ->S) ~> ->T,
-}
+struct S { }
+
+function f(s: S) { }

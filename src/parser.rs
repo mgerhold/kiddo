@@ -327,15 +327,27 @@ impl<'a> ParserState<'a> {
     ) -> Result<GlobalVariableDefinition<'a>, ParserError<'a>> {
         /*
         GlobalVariableDefinition:
-            (definition=LocalVariableDefinition)
+            'let' (mutability=Mutability) (name=NonTypeIdentifier) ':' type=DataType? '=' (value=Expression) ';'
          */
-        let definition = &*self.bump_allocator.alloc(self.local_variable_definition()?);
+        self.expect(TokenType::Let)?;
+        let mutability = if self.consume(TokenType::Mutable).is_some() {
+            Mutability::Mutable
+        } else {
+            self.consume(TokenType::Const);
+            Mutability::Constant
+        };
+        let name = self.non_type_identifier()?;
+        self.expect(TokenType::Colon)?;
+        let type_ = self.data_type()?;
+        self.expect(TokenType::Equals)?;
+        let initial_value = self.expression()?;
+        self.expect(TokenType::Semicolon)?;
         Ok(GlobalVariableDefinition {
             is_exported,
-            mutability: definition.mutability,
-            name: definition.name,
-            type_: definition.type_.as_ref(),
-            initial_value: definition.initial_value,
+            mutability,
+            name,
+            type_,
+            initial_value,
         })
     }
 
@@ -402,7 +414,10 @@ impl<'a> ParserState<'a> {
         self.expect(TokenType::Colon)?;
         let type_ = self.data_type()?;
 
-        Ok(FunctionParameter { name, type_ })
+        Ok(FunctionParameter {
+            name: self.bump_allocator.alloc(name),
+            type_,
+        })
     }
 
     fn block(&mut self) -> Result<Block<'a>, ParserError<'a>> {

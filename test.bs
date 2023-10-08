@@ -18,19 +18,21 @@ from std::terminal import f;
 from std::terminal import cout;
 from std::terminal import cout as classic_print;
 
-let global0 = global1;
+let global0: U32 = global1;
 let global1: U32 = 42;
-let mutable global2 = 42;
-let mutable global3: U32 = 42;
-let const global4 = 42;
-let const global5: U32 = 42;
+let mutable global2: U32 = 42;
+let const global3: U32 = 42;
 
-export let global6 = 42;
-export let global7: U32 = 42;
-export let mutable global8 = 42;
-export let mutable global9: U32 = 42;
-export let const global10 = 42;
-export let const global11: U32 = 42;
+// function 𒀲() ~> U𒀲 { }
+
+// let global15000: U𒀲𒀲𒀲𒀲𒀲𒀲 = 42; // todo: error in error message, wrong length
+// let global15000: Uゆゆゆゆゆゆゆゆゆゆ = 42; // todo: error in error message, wrong length
+
+export let global4: U32 = 42;
+export let mutable global5: U32 = 42;
+export let const global6: U32 = 42;
+
+let global_s: S = 42;
 
 export struct S {
     //number: U32,
@@ -64,6 +66,8 @@ struct S6 {
 export function f(this: ->S, n: U32) ~> Nothing {
     //this!.number = this!.number + n;
 }
+
+function f(lhs: U32, rhs: U32) { }
 
 // function f() { }
 

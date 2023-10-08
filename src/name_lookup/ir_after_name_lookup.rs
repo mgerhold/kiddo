@@ -1,3 +1,4 @@
+use std::fmt::Display;
 use std::path::Path;
 
 use bumpalo::Bump;
@@ -13,26 +14,45 @@ use crate::parser::ir_parsed::{Block, Expression};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Definition<'a> {
-    Function(FunctionDefinition<'a>),
+    Function(PartiallyResolvedFunctionDefinition<'a>),
     GlobalVariable(GlobalVariableDefinition<'a>),
     Struct(StructDefinition<'a>),
 }
 
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct FunctionDefinition<'a> {
-    pub(crate) name: NonTypeIdentifier<'a>,
-    pub(crate) parameters: &'a [FunctionParameter<'a>],
-    pub(crate) return_type: Option<&'a PartiallyResolvedDataType<'a>>,
-    pub(crate) body: Block<'a>,
-}
-
-pub(crate) type OverloadSet<'a> = &'a [FunctionDefinition<'a>];
-
-#[derive(Debug, Clone, Copy)]
-pub(crate) struct FunctionParameter<'a> {
+pub(crate) struct PartiallyResolvedFunctionParameter<'a> {
     pub(crate) name: &'a NonTypeIdentifier<'a>,
     pub(crate) type_: &'a PartiallyResolvedDataType<'a>,
 }
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PartiallyResolvedFunctionDefinition<'a> {
+    pub(crate) name: NonTypeIdentifier<'a>,
+    pub(crate) parameters: &'a [&'a PartiallyResolvedFunctionParameter<'a>],
+    pub(crate) return_type: Option<&'a PartiallyResolvedDataType<'a>>,
+    pub(crate) body: Block<'a>,
+    pub(crate) is_exported: bool,
+}
+
+pub(crate) type PartiallyResolvedOverloadSet<'a> =
+    &'a [&'a PartiallyResolvedFunctionDefinition<'a>];
+
+#[derive(Debug, Clone)]
+pub(crate) struct CompletelyResolvedFunctionParameter<'a> {
+    pub(crate) name: &'a NonTypeIdentifier<'a>,
+    pub(crate) type_: &'a CompletelyResolvedDataType<'a>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CompletelyResolvedFunctionDefinition<'a> {
+    pub(crate) name: NonTypeIdentifier<'a>,
+    pub(crate) parameters: &'a [&'a CompletelyResolvedFunctionParameter<'a>],
+    pub(crate) return_type: Option<&'a CompletelyResolvedDataType<'a>>,
+    pub(crate) body: Block<'a>,
+    pub(crate) is_exported: bool,
+}
+
+type CompletelyResolvedOverloadSet<'a> = &'a [&'a CompletelyResolvedFunctionDefinition<'a>];
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct LocalVariableDefinition<'a> {
@@ -64,9 +84,9 @@ pub(crate) struct StructMember<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ResolvedValue<'a> {
-    FunctionParameter(&'a FunctionParameter<'a>),
+    FunctionParameter(&'a PartiallyResolvedFunctionParameter<'a>),
     LocalVariable(&'a LocalVariableDefinition<'a>),
-    FunctionOverloadSet(&'a [FunctionDefinition<'a>]),
+    FunctionOverloadSet(&'a [PartiallyResolvedFunctionDefinition<'a>]),
     GlobalVariable(&'a GlobalVariableDefinition<'a>),
 }
 
@@ -96,10 +116,10 @@ pub(crate) enum PartiallyResolvedTypeName<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum ResolvedNonTypeName<'a> {
-    FunctionParameter(&'a FunctionParameter<'a>),
+    FunctionParameter(&'a PartiallyResolvedFunctionParameter<'a>),
     LocalVariable(&'a LocalVariableDefinition<'a>),
     GlobalVariable(&'a GlobalVariableDefinition<'a>),
-    FunctionDefinition(&'a FunctionDefinition<'a>),
+    FunctionDefinition(&'a PartiallyResolvedFunctionDefinition<'a>),
 }
 
 #[derive(Debug, Clone)]
@@ -121,6 +141,84 @@ pub(crate) enum PartiallyResolvedTypeDefinition<'a> {
 }
 
 #[derive(Debug, Clone)]
+pub(crate) struct PartiallyResolvedGlobalVariableDefinition<'a> {
+    pub(crate) is_exported: bool,
+    pub(crate) mutability: Mutability,
+    pub(crate) name: NonTypeIdentifier<'a>,
+    pub(crate) type_: &'a PartiallyResolvedDataType<'a>,
+    pub(crate) initial_value: Expression<'a>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum PartiallyResolvedNonTypeDefinition<'a> {
+    GlobalVariable(&'a PartiallyResolvedGlobalVariableDefinition<'a>),
+    Function(PartiallyResolvedOverloadSet<'a>),
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct CompletelyResolvedGlobalVariableDefinition<'a> {
+    pub(crate) is_exported: bool,
+    pub(crate) mutability: Mutability,
+    pub(crate) name: NonTypeIdentifier<'a>,
+    pub(crate) type_: &'a CompletelyResolvedDataType<'a>,
+    pub(crate) initial_value: Expression<'a>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum CompletelyResolvedNonTypeDefinition<'a> {
+    GlobalVariable(&'a CompletelyResolvedGlobalVariableDefinition<'a>),
+    Function(CompletelyResolvedOverloadSet<'a>),
+}
+
+impl CompletelyResolvedNonTypeDefinition<'_> {
+    pub(crate) fn to_string(&self, type_table: &[&CompletelyResolvedTypeDefinition]) -> String {
+        match self {
+            CompletelyResolvedNonTypeDefinition::GlobalVariable(definition) => {
+                format!(
+                    "{}let {} {}: {} = {};",
+                    if definition.is_exported {
+                        "export "
+                    } else {
+                        ""
+                    },
+                    definition.mutability,
+                    definition.name.0.lexeme(),
+                    definition.type_.to_string(type_table),
+                    definition.initial_value,
+                )
+            }
+            CompletelyResolvedNonTypeDefinition::Function(definition) => format!(
+                "[{}]",
+                definition
+                    .iter()
+                    .map(|overload| {
+                        format!(
+                            "function {}({}){}",
+                            overload.name.0.lexeme(),
+                            overload
+                                .parameters
+                                .iter()
+                                .map(|parameter| format!(
+                                    "{}: {}",
+                                    parameter.name.0.lexeme(),
+                                    parameter.type_.to_string(type_table)
+                                ))
+                                .intersperse(", ".to_string())
+                                .collect::<String>(),
+                            match overload.return_type {
+                                None => "".to_string(),
+                                Some(type_) => format!(" ~> {}", type_.to_string(type_table)),
+                            }
+                        )
+                    })
+                    .intersperse(", ".to_string())
+                    .collect::<String>(),
+            ),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub(crate) struct PartiallyResolvedModule<'a> {
     pub(crate) canonical_path: &'a Path,
     pub(crate) local_type_names: hashbrown::HashMap<
@@ -129,10 +227,16 @@ pub(crate) struct PartiallyResolvedModule<'a> {
         DefaultHashBuilder,
         &'a Bump,
     >,
+    pub(crate) local_non_type_names: hashbrown::HashMap<
+        &'a str,
+        &'a PartiallyResolvedNonTypeDefinition<'a>,
+        DefaultHashBuilder,
+        &'a Bump,
+    >,
     pub(crate) imported_type_names:
         hashbrown::HashMap<&'a str, &'a TypeDefinition<'a>, DefaultHashBuilder, &'a Bump>,
-    pub(crate) non_type_names:
-        &'a hashbrown::HashMap<&'a str, &'a NonTypeDefinition<'a>, DefaultHashBuilder, &'a Bump>,
+    pub(crate) imported_non_type_names:
+        hashbrown::HashMap<&'a str, &'a NonTypeDefinition<'a>, DefaultHashBuilder, &'a Bump>,
 }
 
 #[derive(Debug, Clone)]
@@ -243,19 +347,25 @@ pub(crate) enum CompletelyResolvedTypeDefinition<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct Program<'a> {
-    pub(crate) data_type: &'a [CompletelyResolvedTypeDefinition<'a>],
-}
-
-#[derive(Debug, Clone)]
-pub(crate) struct CompletelyResolvedModule<'a> {
+pub(crate) struct ModuleWithCompletelyResolvedTypeDefinitions<'a> {
     pub(crate) canonical_path: &'a Path,
     pub(crate) type_names: hashbrown::HashMap<
         &'a str,
-        Option<&'a CompletelyResolvedModule<'a>>,
+        Option<&'a ModuleWithCompletelyResolvedTypeDefinitions<'a>>,
         DefaultHashBuilder,
         &'a Bump,
     >,
     pub(crate) non_type_names:
         &'a hashbrown::HashMap<&'a str, &'a NonTypeDefinition<'a>, DefaultHashBuilder, &'a Bump>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ProgramWithResolvedTypes<'a> {
+    pub(crate) type_table: &'a [&'a CompletelyResolvedTypeDefinition<'a>],
+    pub(crate) non_type_table: &'a [&'a CompletelyResolvedNonTypeDefinition<'a>],
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct Program<'a> {
+    pub(crate) data_type: &'a [CompletelyResolvedTypeDefinition<'a>],
 }

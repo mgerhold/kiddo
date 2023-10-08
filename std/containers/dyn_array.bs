@@ -8,12 +8,12 @@ import list; // circular import
 import list as vector; // circular import
 import ::std::containers::list; // circular import
 import ::std::containers::list as el_listo; // circular import
-from ::std::intrinsics import Usize;
+from ::std::intrinsics import USize;
 
 struct Pointer{}
 
 export struct DynArray {
-    size: Usize,
-    capacity: Usize,
+    size: USize,
+    capacity: USize,
     data: Pointer,
 }

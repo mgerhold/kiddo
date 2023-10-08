@@ -8,9 +8,9 @@ pub use representations::ModuleWithImports;
 use crate::constants::SOURCE_FILE_EXTENSION;
 use crate::import_resolution::errors::{ImportError, NameError};
 use crate::import_resolution::representations::{
-    ConnectedImport, ConnectedModule, ConnectedModules, ModuleImports, ModuleWithCategorizedNames,
-    NonTypeDefinition, Overload, ResolvedDefinition, ResolvedModule, TypeDefinition,
-    TypeDefinitionKind,
+    ConnectedImport, ConnectedModule, ConnectedModules, GlobalVariableDefinitionWithOptionalOrigin,
+    ModuleImports, ModuleWithCategorizedNames, NonTypeDefinition, Overload, ResolvedDefinition,
+    ResolvedModule, TypeDefinition, TypeDefinitionKind,
 };
 use crate::lexer::LexerError;
 use crate::parser::errors::ErrorReport;
@@ -432,10 +432,16 @@ pub(crate) fn categorize_names<'a>(
             }
             Definition::GlobalVariable(global_variable) => {
                 let global_variable_definition =
-                    &*bump_allocator.alloc(NonTypeDefinition::GlobalVariable {
-                        origin: definition.origin,
-                        definition: global_variable,
-                    });
+                    &*bump_allocator.alloc(NonTypeDefinition::GlobalVariable(
+                        &*bump_allocator.alloc(GlobalVariableDefinitionWithOptionalOrigin {
+                            origin: definition.origin,
+                            is_exported: global_variable.is_exported,
+                            mutability: global_variable.mutability,
+                            name: global_variable.name,
+                            type_: global_variable.type_,
+                            initial_value: global_variable.initial_value,
+                        }),
+                    ));
                 if let Some(previous_definition) =
                     non_type_names.insert(definition.name, global_variable_definition)
                 {
@@ -450,12 +456,20 @@ pub(crate) fn categorize_names<'a>(
     }
 
     for (name, overloads) in overload_sets {
-        non_type_names.insert(
+        if let Some(previous_definition) = non_type_names.insert(
             name,
             bump_allocator.alloc(NonTypeDefinition::Function(
                 &*bump_allocator.alloc_slice_clone(&overloads),
             )),
-        );
+        ) {
+            return Err(Box::new(NameError::DuplicateNonTypeName {
+                name,
+                previous_definition,
+                current_definition: &*bump_allocator.alloc(NonTypeDefinition::Function(
+                    &*bump_allocator.alloc_slice_clone(&overloads),
+                )),
+            }));
+        }
     }
 
     Ok(bump_allocator.alloc(ModuleWithCategorizedNames {

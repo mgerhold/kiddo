@@ -7,10 +7,11 @@ import containers::dyn_array;
 import containers::dyn_array as donny;
 import ::std::containers::list;
 from ::std::containers::list import List as Queue;
+from ::std::intrinsics import U32;
 
 export function print() { }
 
 export function f() { }
 // export function f(param: U32) { }
 
-export let cout = 10;
+export let cout: U32 = 10;

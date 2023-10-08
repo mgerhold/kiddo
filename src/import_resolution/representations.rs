@@ -5,7 +5,8 @@ use bumpalo::Bump;
 use hashbrown::hash_map::DefaultHashBuilder;
 
 use crate::parser::ir_parsed::{
-    Definition, FunctionDefinition, GlobalVariableDefinition, Import, Module, StructDefinition,
+    DataType, Definition, Expression, FunctionDefinition, Import, Module, Mutability,
+    NonTypeIdentifier, StructDefinition,
 };
 
 pub(crate) type ModuleImports<'a> = &'a [(&'a Import<'a>, &'a Path)];
@@ -104,13 +105,32 @@ pub(crate) struct Overload<'a> {
 
 pub(crate) type OverloadSet<'a> = &'a [&'a Overload<'a>];
 
+#[derive(Debug, Clone, Copy)]
+pub struct GlobalVariableDefinitionWithOptionalOrigin<'a> {
+    pub(crate) origin: Option<&'a Import<'a>>,
+    pub(crate) is_exported: bool,
+    pub(crate) mutability: Mutability,
+    pub(crate) name: NonTypeIdentifier<'a>,
+    pub(crate) type_: DataType<'a>,
+    pub(crate) initial_value: Expression<'a>,
+}
+
 #[derive(Debug, Clone)]
 pub(crate) enum NonTypeDefinition<'a> {
-    GlobalVariable {
-        origin: Option<&'a Import<'a>>,
-        definition: &'a GlobalVariableDefinition<'a>,
-    },
+    GlobalVariable(&'a GlobalVariableDefinitionWithOptionalOrigin<'a>),
     Function(OverloadSet<'a>),
+}
+
+impl<'a> NonTypeDefinition<'a> {
+    pub(crate) fn get_first_origin(&self) -> Option<&'a Import<'a>> {
+        match self {
+            NonTypeDefinition::GlobalVariable(definition) => definition.origin,
+            NonTypeDefinition::Function(overload_set) => overload_set
+                .iter()
+                .filter_map(|overload| overload.origin)
+                .next(),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]

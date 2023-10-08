@@ -118,50 +118,75 @@ impl ErrorReport for NameError<'_> {
                 previous_definition,
                 current_definition,
             } => {
-                match current_definition {
-                    NonTypeDefinition::GlobalVariable { origin, definition } => {
-                        if let Some(import) = origin {
-                            print_error(
-                                &import.source_location(),
-                                format!("redefinition of global variable '{name}'"),
-                                "global variable is imported here",
-                                output_filename,
-                            );
-                        } else {
+                if let Some(import) = current_definition.get_first_origin() {
+                    print_error(
+                        &import.source_location(),
+                        format!("redefinition of symbol '{name}'"),
+                        "symbol is imported here",
+                        output_filename,
+                    );
+                } else {
+                    match current_definition {
+                        NonTypeDefinition::GlobalVariable(definition) => {
                             print_error(
                                 &definition.name.0.source_location,
-                                format!("redefinition of global variable '{name}'"),
+                                format!("redefinition of symbol '{name}'"),
                                 "global variable is defined here",
                                 output_filename,
                             );
                         }
-                    }
-                    NonTypeDefinition::Function(_) => {
-                        todo!()
-                    }
-                };
-                match previous_definition {
-                    NonTypeDefinition::GlobalVariable { origin, definition } => {
-                        if let Some(import) = origin {
-                            print_note(
-                                &import.source_location(),
-                                format!("global variable '{name}' was already defined"),
-                                "global variable is imported here",
-                                output_filename,
-                            );
-                        } else {
-                            print_note(
-                                &definition.name.0.source_location,
-                                format!("global variable '{name}' was already defined"),
-                                "global variable is defined here",
+                        NonTypeDefinition::Function(overload_set) => {
+                            assert!(!overload_set.is_empty());
+                            print_error(
+                                &overload_set
+                                    .first()
+                                    .unwrap()
+                                    .definition
+                                    .name
+                                    .0
+                                    .source_location,
+                                format!("redefinition of symbol '{name}'"),
+                                "function is defined here",
                                 output_filename,
                             );
                         }
                     }
-                    NonTypeDefinition::Function(_) => {
-                        todo!()
+                }
+
+                if let Some(import) = previous_definition.get_first_origin() {
+                    print_note(
+                        &import.source_location(),
+                        format!("symbol '{name}' was already defined"),
+                        "symbol is imported here",
+                        output_filename,
+                    );
+                } else {
+                    match previous_definition {
+                        NonTypeDefinition::GlobalVariable(definition) => {
+                            print_note(
+                                &definition.name.0.source_location,
+                                format!("symbol '{name}' was already defined"),
+                                "previous definition is here",
+                                output_filename,
+                            );
+                        }
+                        NonTypeDefinition::Function(overload_set) => {
+                            assert!(!overload_set.is_empty());
+                            print_error(
+                                &overload_set
+                                    .first()
+                                    .unwrap()
+                                    .definition
+                                    .name
+                                    .0
+                                    .source_location,
+                                format!("symbol '{name}' was already defined"),
+                                "previous definition is here",
+                                output_filename,
+                            );
+                        }
                     }
-                };
+                }
             }
         }
     }
