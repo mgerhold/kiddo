@@ -535,7 +535,6 @@ pub(crate) fn completely_resolve_type_definitions<'a>(
         .iter()
         .map(|module| ModuleForNameResolution {
             canonical_path: module.canonical_path,
-            definitions: module.definitions,
             global_scope: global_scopes
                 .get(module.canonical_path)
                 .expect("each module has its global scope resolved"),

@@ -356,8 +356,6 @@ pub(crate) struct Scope<'a> {
 #[derive(Debug, Clone)]
 pub(crate) struct ModuleForNameResolution<'a> {
     pub(crate) canonical_path: &'a Path,
-    pub(crate) definitions: &'a [&'a ir_parsed::Definition<'a>],
-    // todo: remove? (I think this is not needed)
     pub(crate) global_scope: &'a Scope<'a>,
     pub(crate) non_type_definitions: &'a [&'a CompletelyResolvedNonTypeDefinition<'a>],
 }
