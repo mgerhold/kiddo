@@ -11,19 +11,21 @@ use crate::token::{SourceLocation, Token, TokenType};
 #[derive(Debug, Clone, Copy)]
 pub struct Module<'a> {
     pub(crate) imports: &'a [Import<'a>],
-    pub(crate) definitions: &'a [Definition<'a>],
+    pub(crate) definitions: &'a [&'a Definition<'a>],
 }
 
 impl Module<'_> {
     pub(crate) fn exported_definitions(
         &self,
-    ) -> Filter<Iter<Definition>, fn(&&Definition) -> bool> {
+    ) -> Filter<Iter<&Definition>, fn(&&&Definition) -> bool> {
         self.definitions
             .iter()
             .filter(|definition| definition.is_exported())
     }
 
-    pub(crate) fn private_definitions(&self) -> Filter<Iter<Definition>, fn(&&Definition) -> bool> {
+    pub(crate) fn private_definitions(
+        &self,
+    ) -> Filter<Iter<&Definition>, fn(&&&Definition) -> bool> {
         self.definitions
             .iter()
             .filter(|definition| !definition.is_exported())

@@ -184,7 +184,7 @@ impl<'a> ParserState<'a> {
         Ok(import)
     }
 
-    fn definitions(&mut self) -> Result<Vec<Definition<'a>>, ParserError<'a>> {
+    fn definitions(&mut self) -> Result<Vec<&'a Definition<'a>>, ParserError<'a>> {
         let mut result = Vec::new();
 
         loop {
@@ -203,7 +203,7 @@ impl<'a> ParserState<'a> {
         Ok(result)
     }
 
-    fn definition(&mut self, is_exported: bool) -> Result<Definition<'a>, ParserError<'a>> {
+    fn definition(&mut self, is_exported: bool) -> Result<&'a Definition<'a>, ParserError<'a>> {
         match self.current().type_ {
             TokenType::Struct => Ok(Definition::Struct(self.struct_definition(is_exported)?)),
             TokenType::Function => Ok(Definition::Function(self.function_definition(is_exported)?)),
@@ -215,6 +215,7 @@ impl<'a> ParserState<'a> {
                 actual: self.current(),
             }),
         }
+        .map(|definition| &*self.bump_allocator.alloc(definition))
     }
 
     fn struct_definition(

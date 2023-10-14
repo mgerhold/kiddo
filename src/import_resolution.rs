@@ -331,11 +331,11 @@ pub(crate) fn resolve_imports<'a>(
                             non_exported_definition: connected_import
                                 .target_module
                                 .private_definitions()
-                                .cloned()
                                 .find(|definition| {
                                     definition.identifier().token().lexeme()
                                         == symbol.token().lexeme()
-                                }),
+                                })
+                                .copied(),
                         }));
                     }
                 }
@@ -386,7 +386,8 @@ pub(crate) fn resolve_imports<'a>(
         let resolved_definitions = bump_allocator.alloc_slice_clone(&definitions);
         resolved_modules.push(ResolvedModule {
             canonical_path: module.canonical_path,
-            definitions: resolved_definitions,
+            resolved_definitions,
+            unresolved_definitions: module.definitions,
         });
     }
     let resolved_modules = bump_allocator.alloc_slice_clone(&resolved_modules);
@@ -404,7 +405,7 @@ pub(crate) fn categorize_names<'a>(
 
     let mut overload_sets: HashMap<_, Vec<_>> = HashMap::new();
 
-    for definition in module.definitions {
+    for definition in module.resolved_definitions {
         match definition.definition {
             Definition::Struct(struct_) => {
                 let type_definition = &*bump_allocator.alloc(TypeDefinition {
@@ -476,5 +477,6 @@ pub(crate) fn categorize_names<'a>(
         canonical_path: module.canonical_path,
         type_names,
         non_type_names,
+        definitions: module.unresolved_definitions,
     }))
 }

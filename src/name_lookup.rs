@@ -8,13 +8,13 @@ use crate::import_resolution::representations::{
 };
 use crate::name_lookup::errors::{CouldNotResolveName, NameLookupError};
 use crate::name_lookup::ir_after_name_lookup as target_ir;
-use crate::name_lookup::ir_after_name_lookup::PartiallyResolvedTypeDefinition;
 use crate::name_lookup::target_ir::{
     CompletelyResolvedFunctionDefinition, CompletelyResolvedFunctionParameter,
     CompletelyResolvedGlobalVariableDefinition, CompletelyResolvedNonTypeDefinition,
-    CompletelyResolvedTypeDefinition, PartiallyResolvedFunctionDefinition,
-    PartiallyResolvedFunctionParameter, PartiallyResolvedGlobalVariableDefinition,
-    PartiallyResolvedNonTypeDefinition, ProgramWithResolvedTypes,
+    ModuleForNameResolution, ModuleWithCompletelyResolvedDefinitions,
+    PartiallyResolvedFunctionDefinition, PartiallyResolvedFunctionParameter,
+    PartiallyResolvedGlobalVariableDefinition, PartiallyResolvedNonTypeDefinition,
+    ProgramWithResolvedTypes, Scope,
 };
 use crate::parser::ir_parsed as source_ir;
 
@@ -229,6 +229,7 @@ pub(crate) fn partially_resolve_type_definitions<'a>(
         local_non_type_names,
         imported_type_names: imported_type_definitions,
         imported_non_type_names: imported_non_type_definitions,
+        definitions: module.definitions,
     })
 }
 
@@ -373,11 +374,12 @@ pub(crate) fn completely_resolve_type_definitions<'a>(
         }
     }
 
+    let mut modules = Vec::new();
     for module in partially_resolved_modules {
         let mut type_definitions = HashMap::new();
         for (name, type_definition) in &module.local_type_names {
             match type_definition {
-                PartiallyResolvedTypeDefinition::Struct(struct_) => {
+                target_ir::PartiallyResolvedTypeDefinition::Struct(struct_) => {
                     type_definitions.insert(
                         *name,
                         type_table[*type_mapping
@@ -504,28 +506,17 @@ pub(crate) fn completely_resolve_type_definitions<'a>(
             );
         }
 
-        println!(
-            "type definitions available in module '{}'",
-            module.canonical_path.display()
-        );
-        for (name, definition) in type_definitions {
-            println!(
-                "\t{} -> struct {}",
-                name,
-                match definition {
-                    CompletelyResolvedTypeDefinition::Struct(definition) =>
-                        definition.name.0.lexeme(),
-                }
-            );
-        }
-
-        println!(
-            "non-type definitions available in module '{}'",
-            module.canonical_path.display()
-        );
-        for (name, definition) in non_type_definitions {
-            println!("\t{} -> {}", name, definition.to_string(type_table));
-        }
+        modules.push(ModuleForNameResolution {
+            canonical_path: module.canonical_path,
+            definitions: module.definitions,
+            global_scope: Scope {
+                type_definitions,
+                non_type_definitions,
+            },
+            with_resolved_types: &*bump_allocator.alloc(ModuleWithCompletelyResolvedDefinitions {
+                canonical_path: module.canonical_path,
+            }),
+        });
     }
 
     let non_type_table = &*bump_allocator.alloc_slice_clone(&non_type_table);
@@ -533,6 +524,7 @@ pub(crate) fn completely_resolve_type_definitions<'a>(
     &*bump_allocator.alloc(ProgramWithResolvedTypes {
         type_table,
         non_type_table,
+        modules,
     })
 }
 

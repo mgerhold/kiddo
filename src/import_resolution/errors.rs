@@ -206,7 +206,7 @@ pub enum ImportError<'a> {
         imported_module_path: &'a Path,
         import_path: QualifiedName<'a>,
         symbol_token: Identifier<'a>,
-        non_exported_definition: Option<Definition<'a>>,
+        non_exported_definition: Option<&'a Definition<'a>>,
     },
     ImportedClashWithLocalDefinition {
         import: Import<'a>,

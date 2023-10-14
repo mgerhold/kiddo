@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::Path;
 
 use bumpalo::Bump;
@@ -236,6 +237,7 @@ pub(crate) struct PartiallyResolvedModule<'a> {
         hashbrown::HashMap<&'a str, &'a TypeDefinition<'a>, DefaultHashBuilder, &'a Bump>,
     pub(crate) imported_non_type_names:
         hashbrown::HashMap<&'a str, &'a NonTypeDefinition<'a>, DefaultHashBuilder, &'a Bump>,
+    pub(crate) definitions: &'a [&'a ir_parsed::Definition<'a>],
 }
 
 #[derive(Debug, Clone)]
@@ -346,22 +348,29 @@ pub(crate) enum CompletelyResolvedTypeDefinition<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct ModuleWithCompletelyResolvedTypeDefinitions<'a> {
+pub(crate) struct ModuleWithCompletelyResolvedDefinitions<'a> {
     pub(crate) canonical_path: &'a Path,
-    pub(crate) type_names: hashbrown::HashMap<
-        &'a str,
-        Option<&'a ModuleWithCompletelyResolvedTypeDefinitions<'a>>,
-        DefaultHashBuilder,
-        &'a Bump,
-    >,
-    pub(crate) non_type_names:
-        &'a hashbrown::HashMap<&'a str, &'a NonTypeDefinition<'a>, DefaultHashBuilder, &'a Bump>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct Scope<'a> {
+    pub(crate) type_definitions: HashMap<&'a str, &'a CompletelyResolvedTypeDefinition<'a>>,
+    pub(crate) non_type_definitions: HashMap<&'a str, &'a CompletelyResolvedNonTypeDefinition<'a>>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ModuleForNameResolution<'a> {
+    pub(crate) canonical_path: &'a Path,
+    pub(crate) definitions: &'a [&'a ir_parsed::Definition<'a>],
+    pub(crate) global_scope: Scope<'a>,
+    pub(crate) with_resolved_types: &'a ModuleWithCompletelyResolvedDefinitions<'a>,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct ProgramWithResolvedTypes<'a> {
     pub(crate) type_table: &'a [&'a CompletelyResolvedTypeDefinition<'a>],
     pub(crate) non_type_table: &'a [&'a CompletelyResolvedNonTypeDefinition<'a>],
+    pub(crate) modules: Vec<ModuleForNameResolution<'a>>,
 }
 
 #[derive(Debug, Clone)]

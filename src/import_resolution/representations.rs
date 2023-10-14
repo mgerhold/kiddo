@@ -25,7 +25,7 @@ pub(crate) type ConnectedModules<'a> = &'a [ConnectedModule<'a>];
 pub struct ConnectedModule<'a> {
     pub(crate) canonical_path: &'a Path,
     pub(crate) imports: &'a [ConnectedImport<'a>],
-    pub(crate) definitions: &'a [Definition<'a>],
+    pub(crate) definitions: &'a [&'a Definition<'a>],
 }
 
 impl Debug for ConnectedModule<'_> {
@@ -87,7 +87,8 @@ impl Display for ConnectedImport<'_> {
 #[derive(Debug, Clone)]
 pub(crate) struct ResolvedModule<'a> {
     pub(crate) canonical_path: &'a Path,
-    pub(crate) definitions: &'a [ResolvedDefinition<'a>],
+    pub(crate) resolved_definitions: &'a [ResolvedDefinition<'a>],
+    pub(crate) unresolved_definitions: &'a [&'a Definition<'a>],
 }
 
 #[derive(Debug, Clone)]
@@ -151,4 +152,5 @@ pub(crate) struct ModuleWithCategorizedNames<'a> {
         hashbrown::HashMap<&'a str, &'a TypeDefinition<'a>, DefaultHashBuilder, &'a Bump>,
     pub(crate) non_type_names:
         hashbrown::HashMap<&'a str, &'a NonTypeDefinition<'a>, DefaultHashBuilder, &'a Bump>,
+    pub(crate) definitions: &'a [&'a Definition<'a>],
 }
