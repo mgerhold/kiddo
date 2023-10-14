@@ -23,6 +23,32 @@ let global1: U32 = 42;
 let mutable global2: U32 = 42;
 let const global3: U32 = 42;
 
+export function expression_statements() {
+    ::std::terminal::print;
+    ::std::terminal::f;
+    ::std::terminal::cout;
+    t::print;
+    t::f;
+    t::cout;
+    print;
+    log;
+    f;
+    test::expression_statements;
+    test::global4;
+    test::global5;
+    cout;
+    classic_print;
+    expression_statements;
+}
+
+function a() {
+    b;
+}
+
+function b() {
+    a;
+}
+
 // function 𒀲() ~> U𒀲 { }
 
 // let global15000: U𒀲𒀲𒀲𒀲𒀲𒀲 = 42; // todo: error in error message, wrong length

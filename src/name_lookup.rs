@@ -8,13 +8,13 @@ use crate::import_resolution::representations::{
 };
 use crate::name_lookup::errors::{CouldNotResolveName, NameLookupError};
 use crate::name_lookup::ir_after_name_lookup as target_ir;
+use crate::name_lookup::ir_after_name_lookup::Scope;
 use crate::name_lookup::target_ir::{
     CompletelyResolvedFunctionDefinition, CompletelyResolvedFunctionParameter,
     CompletelyResolvedGlobalVariableDefinition, CompletelyResolvedNonTypeDefinition,
-    ModuleForNameResolution, ModuleWithCompletelyResolvedDefinitions,
-    PartiallyResolvedFunctionDefinition, PartiallyResolvedFunctionParameter,
-    PartiallyResolvedGlobalVariableDefinition, PartiallyResolvedNonTypeDefinition,
-    ProgramWithResolvedTypes, Scope,
+    ModuleForNameResolution, PartiallyResolvedFunctionDefinition,
+    PartiallyResolvedFunctionParameter, PartiallyResolvedGlobalVariableDefinition,
+    PartiallyResolvedNonTypeDefinition, ProgramWithResolvedTypes,
 };
 use crate::parser::ir_parsed as source_ir;
 
@@ -311,9 +311,12 @@ pub(crate) fn completely_resolve_type_definitions<'a>(
         generate_intermediate_type_table(partially_resolved_modules, bump_allocator);
     let type_table = freeze_type_table(intermediate_type_table, bump_allocator);
 
+    let mut resolved_type_definitions_by_module = HashMap::new();
+
     let mut non_type_mapping = HashMap::new();
     let mut non_type_table = Vec::new();
     for module in partially_resolved_modules {
+        let mut completely_resolved_non_type_definitions = Vec::new();
         for (name, definition) in &module.local_non_type_names {
             match definition {
                 PartiallyResolvedNonTypeDefinition::GlobalVariable(definition) => {
@@ -322,7 +325,7 @@ pub(crate) fn completely_resolve_type_definitions<'a>(
                         &type_mapping,
                         bump_allocator,
                     );
-                    non_type_table.push(&*bump_allocator.alloc(
+                    let definition = &*bump_allocator.alloc(
                         CompletelyResolvedNonTypeDefinition::GlobalVariable(
                             &*bump_allocator.alloc(CompletelyResolvedGlobalVariableDefinition {
                                 is_exported: definition.is_exported,
@@ -332,7 +335,9 @@ pub(crate) fn completely_resolve_type_definitions<'a>(
                                 initial_value: definition.initial_value,
                             }),
                         ),
-                    ));
+                    );
+                    completely_resolved_non_type_definitions.push(definition);
+                    non_type_table.push(definition);
                     non_type_mapping
                         .insert((module.canonical_path, *name), non_type_table.len() - 1);
                 }
@@ -364,17 +369,26 @@ pub(crate) fn completely_resolve_type_definitions<'a>(
                             })
                         }),
                     );
-                    non_type_table.push(&*bump_allocator.alloc(
+                    let definition = &*bump_allocator.alloc(
                         CompletelyResolvedNonTypeDefinition::Function(resolved_overload_set),
-                    ));
+                    );
+                    completely_resolved_non_type_definitions.push(definition);
+                    non_type_table.push(definition);
                     non_type_mapping
                         .insert((module.canonical_path, *name), non_type_table.len() - 1);
                 }
             }
         }
+        let completely_resolved_non_type_definitions =
+            &*bump_allocator.alloc_slice_clone(&completely_resolved_non_type_definitions);
+        resolved_type_definitions_by_module.insert(
+            module.canonical_path,
+            completely_resolved_non_type_definitions,
+        );
     }
 
-    let mut modules = Vec::new();
+    let mut global_scopes = hashbrown::HashMap::new_in(bump_allocator);
+
     for module in partially_resolved_modules {
         let mut type_definitions = HashMap::new();
         for (name, type_definition) in &module.local_type_names {
@@ -506,20 +520,30 @@ pub(crate) fn completely_resolve_type_definitions<'a>(
             );
         }
 
-        modules.push(ModuleForNameResolution {
-            canonical_path: module.canonical_path,
-            definitions: module.definitions,
-            global_scope: Scope {
+        global_scopes.insert(
+            module.canonical_path,
+            &*bump_allocator.alloc(Scope {
                 type_definitions,
                 non_type_definitions,
-            },
-            with_resolved_types: &*bump_allocator.alloc(ModuleWithCompletelyResolvedDefinitions {
-                canonical_path: module.canonical_path,
             }),
-        });
+        );
     }
 
     let non_type_table = &*bump_allocator.alloc_slice_clone(&non_type_table);
+
+    let modules = partially_resolved_modules
+        .iter()
+        .map(|module| ModuleForNameResolution {
+            canonical_path: module.canonical_path,
+            definitions: module.definitions,
+            global_scope: global_scopes
+                .get(module.canonical_path)
+                .expect("each module has its global scope resolved"),
+            non_type_definitions: resolved_type_definitions_by_module
+                .get(module.canonical_path)
+                .expect("modules without such definitions have an empty vector"),
+        })
+        .collect();
 
     &*bump_allocator.alloc(ProgramWithResolvedTypes {
         type_table,

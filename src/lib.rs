@@ -15,9 +15,10 @@ use crate::helpers::{gather_import_directories, get_canonical_path_to_main_modul
 use crate::import_resolution::{
     categorize_names, connect_modules, find_imports, resolve_imports, ModuleWithImports,
 };
+use crate::name_lookup::ir_after_name_lookup::CompletelyResolvedNonTypeDefinition;
 use crate::name_lookup::{completely_resolve_type_definitions, partially_resolve_type_definitions};
 use crate::parser::errors::ErrorReport;
-use crate::parser::ir_parsed::Definition;
+use crate::parser::ir_parsed::{Expression, Statement};
 use crate::parser::parse_module;
 use crate::utils::AllocPath;
 
@@ -96,18 +97,75 @@ pub fn main<'a>(
 
     for module in &program_with_resolved_types.modules {
         println!("module '{}'", module.canonical_path.display());
-        for definition in module.definitions {
+        println!("    non-type definitions in global scope:");
+        for name in module.global_scope.non_type_definitions.keys() {
+            println!("        {}", name);
+        }
+        for definition in module.non_type_definitions {
             match definition {
-                Definition::Struct(_) => {}
-                Definition::Function(definition) => {
-                    println!("    function {}", definition.name.0.lexeme());
-                    for parameter in definition.parameters {
-                        let typename = parameter.type_.tokens().source_location().lexeme();
-                        println!("        {}: {}", parameter.name.0.lexeme(), typename);
-                    }
+                CompletelyResolvedNonTypeDefinition::GlobalVariable(definition) => {
+                    println!(
+                        "    let {} {}: {}",
+                        definition.mutability,
+                        definition.name.0.lexeme(),
+                        definition
+                            .type_
+                            .to_string(program_with_resolved_types.type_table)
+                    );
                 }
-                Definition::GlobalVariable(definition) => {
-                    println!("    {}", definition);
+                CompletelyResolvedNonTypeDefinition::Function(overload_set) => {
+                    for overload in *overload_set {
+                        println!(
+                            "    function {}({}){}",
+                            overload.name.0.lexeme(),
+                            overload
+                                .parameters
+                                .iter()
+                                .map(|parameter| format!(
+                                    "{}: {}",
+                                    parameter.name.0.lexeme(),
+                                    parameter
+                                        .type_
+                                        .to_string(program_with_resolved_types.type_table)
+                                ))
+                                .intersperse(", ".to_string())
+                                .collect::<String>(),
+                            match overload.return_type {
+                                None => "".to_string(),
+                                Some(type_) => format!(
+                                    " ~> {}",
+                                    type_.to_string(program_with_resolved_types.type_table)
+                                ),
+                            }
+                        );
+
+                        for statement in overload.body.statements {
+                            match statement {
+                                Statement::ExpressionStatement(expression) => {
+                                    match expression {
+                                        Expression::Literal(_) => {}
+                                        Expression::BinaryOperator { .. } => {}
+                                        Expression::Block(_) => {}
+                                        Expression::Name(name) => {
+                                            let name = name.tokens().source_location().lexeme();
+                                            if module
+                                                .global_scope
+                                                .non_type_definitions
+                                                .contains_key(name)
+                                            {
+                                                println!("        : name '{name}' found in scope");
+                                            } else {
+                                                println!("        : name '{name}' __NOT__ found in scope");
+                                            }
+                                        }
+                                    }
+                                }
+                                Statement::Yield(_) => {}
+                                Statement::Return(_) => {}
+                                Statement::VariableDefinition(_) => {}
+                            }
+                        }
+                    }
                 }
             }
         }

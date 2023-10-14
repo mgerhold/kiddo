@@ -534,6 +534,11 @@ impl<'a> ParserState<'a> {
             TokenType::LeftCurlyBracket => Ok(Expression::Block(self.block()?)),
             TokenType::Integer => Ok(Expression::Literal(self.literal()?)),
             TokenType::LowercaseIdentifier => Ok(Expression::Name(self.qualified_non_type_name()?)),
+            TokenType::ColonColon
+                if self.peek().unwrap().type_ == TokenType::LowercaseIdentifier =>
+            {
+                Ok(Expression::Name(self.qualified_non_type_name()?))
+            }
             _ => Err(ParserError::TokenTypeMismatch {
                 expected: &[
                     TokenType::LeftParenthesis,

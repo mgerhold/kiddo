@@ -611,7 +611,7 @@ pub enum QualifiedNonTypeName<'a> {
 }
 
 impl<'a> QualifiedNonTypeName<'a> {
-    fn tokens(self) -> TokenSlice<'a> {
+    pub(crate) fn tokens(self) -> TokenSlice<'a> {
         match self {
             QualifiedNonTypeName::Absolute { tokens } => tokens,
             QualifiedNonTypeName::Relative { tokens } => tokens,
