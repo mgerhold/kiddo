@@ -12,11 +12,13 @@ use crate::name_lookup::ir_after_name_lookup::Scope;
 use crate::name_lookup::target_ir::{
     CompletelyResolvedFunctionDefinition, CompletelyResolvedFunctionParameter,
     CompletelyResolvedGlobalVariableDefinition, CompletelyResolvedNonTypeDefinition,
-    ModuleForNameResolution, PartiallyResolvedFunctionDefinition,
+    CompletelyResolvedOverloadSet, CompletelyResolvedTypeDefinition, FunctionParameter,
+    LocalVariable, ModuleForNameResolution, PartiallyResolvedFunctionDefinition,
     PartiallyResolvedFunctionParameter, PartiallyResolvedGlobalVariableDefinition,
-    PartiallyResolvedNonTypeDefinition, ProgramWithResolvedTypes,
+    PartiallyResolvedNonTypeDefinition, ProgramWithResolvedTypes, ScopeStack,
 };
 use crate::parser::ir_parsed as source_ir;
+use crate::parser::ir_parsed::{Expression, Statement};
 
 pub(crate) mod errors;
 pub(crate) mod ir_after_name_lookup;
@@ -238,10 +240,6 @@ pub(crate) fn completely_resolve_data_type<'a: 'b, 'b>(
     type_mapping: &HashMap<(&Path, &str), usize>,
     bump_allocator: &'a Bump,
 ) -> &'a target_ir::CompletelyResolvedDataType<'a> {
-    println!(
-        "trying to resolve data type '{:?}'",
-        partially_resolved_type
-    );
     match partially_resolved_type {
         target_ir::PartiallyResolvedDataType::Named { definition } => match definition {
             target_ir::PartiallyResolvedTypeName::Struct(definition) => {
@@ -311,7 +309,7 @@ pub(crate) fn completely_resolve_type_definitions<'a>(
         generate_intermediate_type_table(partially_resolved_modules, bump_allocator);
     let type_table = freeze_type_table(intermediate_type_table, bump_allocator);
 
-    let mut resolved_type_definitions_by_module = HashMap::new();
+    let mut resolved_non_type_definitions_by_module = HashMap::new();
 
     let mut non_type_mapping = HashMap::new();
     let mut non_type_table = Vec::new();
@@ -352,6 +350,7 @@ pub(crate) fn completely_resolve_type_definitions<'a>(
                                         bump_allocator,
                                     );
                                     &*bump_allocator.alloc(CompletelyResolvedFunctionParameter {
+                                        mutability: parameter.mutability,
                                         name: parameter.name,
                                         type_: resolved_type,
                                     })
@@ -381,7 +380,7 @@ pub(crate) fn completely_resolve_type_definitions<'a>(
         }
         let completely_resolved_non_type_definitions =
             &*bump_allocator.alloc_slice_clone(&completely_resolved_non_type_definitions);
-        resolved_type_definitions_by_module.insert(
+        resolved_non_type_definitions_by_module.insert(
             module.canonical_path,
             completely_resolved_non_type_definitions,
         );
@@ -538,7 +537,7 @@ pub(crate) fn completely_resolve_type_definitions<'a>(
             global_scope: global_scopes
                 .get(module.canonical_path)
                 .expect("each module has its global scope resolved"),
-            non_type_definitions: resolved_type_definitions_by_module
+            non_type_definitions: resolved_non_type_definitions_by_module
                 .get(module.canonical_path)
                 .expect("modules without such definitions have an empty vector"),
         })
@@ -597,6 +596,7 @@ pub(crate) fn partially_resolve_non_type_name_data_types<'a>(
                         )?;
                         partially_resolved_parameters.push(&*bump_allocator.alloc(
                             PartiallyResolvedFunctionParameter {
+                                mutability: parameter.mutability,
                                 name: parameter.name,
                                 type_: partially_resolved_type,
                             },
@@ -730,4 +730,171 @@ fn generate_intermediate_type_table<'a>(
                 .collect::<Vec<_>>(),
         ),
     )
+}
+
+fn perform_name_lookup_for_expression<'a>(
+    expression: &'a Expression<'a>,
+    scope_stack: &mut ScopeStack<'a>,
+    bump_allocator: &'a Bump,
+) -> Result<(), NameLookupError<'a>> {
+    match expression {
+        Expression::Literal(_) => {
+            // nothing do do since a literal cannot contain a name reference
+        }
+        Expression::BinaryOperator { lhs, operator, rhs } => {
+            perform_name_lookup_for_expression(lhs, scope_stack, bump_allocator)?;
+            perform_name_lookup_for_expression(rhs, scope_stack, bump_allocator)?;
+        }
+        Expression::Block(block) => {
+            for statement in block.statements {
+                perform_name_lookup_for_statement(statement, scope_stack, bump_allocator)?;
+            }
+        }
+        Expression::Name(qualified_name) => {
+            scope_stack.lookup_non_type(qualified_name)?;
+        }
+    }
+    Ok(())
+}
+
+fn perform_name_lookup_for_global_variable_definition<'a>(
+    definition: &'a CompletelyResolvedGlobalVariableDefinition<'a>,
+    scope_stack: &mut ScopeStack<'a>,
+    bump_allocator: &'a Bump,
+) -> Result<(), NameLookupError<'a>> {
+    // todo: perform name lookup for initializing expression
+    Ok(())
+}
+
+fn perform_name_lookup_for_statement<'a>(
+    statement: &'a Statement<'a>,
+    scope_stack: &mut ScopeStack<'a>,
+    bump_allocator: &'a Bump,
+) -> Result<(), NameLookupError<'a>> {
+    match statement {
+        Statement::ExpressionStatement(expression) => {
+            perform_name_lookup_for_expression(expression, scope_stack, bump_allocator)?;
+        }
+        Statement::Yield(_) => {}
+        Statement::Return(_) => {}
+        Statement::VariableDefinition(definition) => {
+            perform_name_lookup_for_expression(
+                &definition.initial_value,
+                scope_stack,
+                bump_allocator,
+            )?;
+
+            scope_stack.push(Scope::from_non_type_definitions(HashMap::from([(
+                definition.name.0.lexeme(),
+                &*bump_allocator.alloc(CompletelyResolvedNonTypeDefinition::LocalVariable(
+                    &*bump_allocator.alloc(LocalVariable {
+                        mutability: definition.mutability,
+                        name: definition.name,
+                        type_: definition
+                            .type_
+                            .map(|type_| scope_stack.lookup_type(&type_))
+                            .transpose()?,
+                    }),
+                )),
+            )])));
+            println!("{scope_stack}");
+        }
+    }
+    Ok(())
+}
+
+fn perform_name_lookup_for_overload<'a>(
+    overload: &'a CompletelyResolvedFunctionDefinition<'a>,
+    scope_stack: &mut ScopeStack<'a>,
+    bump_allocator: &'a Bump,
+) -> Result<(), NameLookupError<'a>> {
+    println!("name lookup for function '{}'", overload.name.0.lexeme());
+    let number_of_scopes = scope_stack.len();
+    let function_scope = Scope {
+        type_definitions: Default::default(),
+        non_type_definitions: overload
+            .parameters
+            .iter()
+            .map(|parameter| {
+                (
+                    parameter.name.0.lexeme(),
+                    &*bump_allocator.alloc(CompletelyResolvedNonTypeDefinition::FunctionParameter(
+                        &*bump_allocator.alloc(FunctionParameter {
+                            mutability: parameter.mutability,
+                            name: parameter.name,
+                            type_: parameter.type_,
+                        }),
+                    )),
+                )
+            })
+            .collect(),
+    };
+    scope_stack.push(function_scope);
+    println!("{scope_stack}");
+    for statement in overload.body.statements {
+        perform_name_lookup_for_statement(statement, scope_stack, bump_allocator)?;
+    }
+
+    assert!(scope_stack.len() >= number_of_scopes);
+    scope_stack.truncate(number_of_scopes);
+
+    Ok(())
+}
+
+fn perform_name_lookup_for_overload_set<'a>(
+    overload_set: CompletelyResolvedOverloadSet<'a>,
+    scope_stack: &mut ScopeStack<'a>,
+    bump_allocator: &'a Bump,
+) -> Result<(), NameLookupError<'a>> {
+    for overload in overload_set {
+        perform_name_lookup_for_overload(overload, scope_stack, bump_allocator)?;
+    }
+    Ok(())
+}
+
+fn perform_name_lookup_for_module<'a>(
+    global_type_table: &'a [&'a CompletelyResolvedTypeDefinition<'a>],
+    module: &'a ModuleForNameResolution<'a>,
+    bump_allocator: &'a Bump,
+) -> Result<(), NameLookupError<'a>> {
+    let mut scope_stack = ScopeStack::new(
+        global_type_table,
+        module.global_scope.clone(),
+        bump_allocator,
+    );
+    for definition in module.non_type_definitions {
+        match definition {
+            CompletelyResolvedNonTypeDefinition::GlobalVariable(definition) => {
+                perform_name_lookup_for_global_variable_definition(
+                    definition,
+                    &mut scope_stack,
+                    bump_allocator,
+                )?;
+            }
+            CompletelyResolvedNonTypeDefinition::Function(overload_set) => {
+                perform_name_lookup_for_overload_set(
+                    overload_set,
+                    &mut scope_stack,
+                    bump_allocator,
+                )?;
+            }
+            CompletelyResolvedNonTypeDefinition::FunctionParameter(_) => {
+                unreachable!("the global scope of a module must never contain a function parameter")
+            }
+            CompletelyResolvedNonTypeDefinition::LocalVariable(_) => {
+                unreachable!("the global scope of a module must never contain a local variable")
+            }
+        }
+    }
+    Ok(())
+}
+
+pub(crate) fn perform_name_lookup<'a>(
+    program: &'a ProgramWithResolvedTypes<'a>,
+    bump_allocator: &'a Bump,
+) -> Result<(), NameLookupError<'a>> {
+    for module in &program.modules {
+        perform_name_lookup_for_module(program.type_table, module, bump_allocator)?;
+    }
+    Ok(())
 }

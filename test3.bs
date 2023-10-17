@@ -1,11 +1,1 @@
-export struct U32 { }
-
-export let global: U32 = 42;
-
-export function f() { }
-
-export function print() { }
-
-export function print(n: U32) ~> U32 { }
-
-function print(n: U32, m: U32) { }
+export struct S { }

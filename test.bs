@@ -103,13 +103,13 @@ function never_returns() ~> Never {
 
 function no_explicit_return_type(this: S, array: [U32; 15]) {
     let a = 10;
-    let const b = 20;
+    let const b = b;
     let mutable c = 30;
     let d: U32 = 40;
     let const e: U32 = 50;
     let mutable f: U32 = 60;
 
-    15 + 2 * (3 + 17) + 7 + test::global0 + this + {
+    15 + 2 * (3 + 17) + 7 + global0 + this + {
         3;
         yield {
             3 + 18;

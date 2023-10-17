@@ -1,0 +1,11 @@
+from ::test2 import U32;
+import ::test2;
+
+export struct S { }
+
+export let nested_global: U32 = 42;
+
+function f() {
+    let a: U32 = 10;
+    let a: ::test2::U32 = 20;
+}

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::fmt::{Display, Formatter};
 use std::path::Path;
 
 use bumpalo::Bump;
@@ -6,11 +7,12 @@ use hashbrown::hash_map::DefaultHashBuilder;
 
 use crate::constants::BackseatSize;
 use crate::import_resolution::representations::{NonTypeDefinition, TypeDefinition};
+use crate::name_lookup::errors::{CouldNotResolveName, NameLookupError};
 use crate::parser::ir_parsed;
 pub(crate) use crate::parser::ir_parsed::Mutability;
 pub(crate) use crate::parser::ir_parsed::NonTypeIdentifier;
 pub(crate) use crate::parser::ir_parsed::TypeIdentifier;
-use crate::parser::ir_parsed::{Block, Expression};
+use crate::parser::ir_parsed::{Block, DataType, Expression, QualifiedNonTypeName};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum Definition<'a> {
@@ -21,13 +23,14 @@ pub(crate) enum Definition<'a> {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PartiallyResolvedFunctionParameter<'a> {
+    pub(crate) mutability: Mutability,
     pub(crate) name: &'a NonTypeIdentifier<'a>,
     pub(crate) type_: &'a PartiallyResolvedDataType<'a>,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct PartiallyResolvedFunctionDefinition<'a> {
-    pub(crate) name: NonTypeIdentifier<'a>,
+    pub(crate) name: &'a NonTypeIdentifier<'a>,
     pub(crate) parameters: &'a [&'a PartiallyResolvedFunctionParameter<'a>],
     pub(crate) return_type: Option<&'a PartiallyResolvedDataType<'a>>,
     pub(crate) body: Block<'a>,
@@ -39,20 +42,22 @@ pub(crate) type PartiallyResolvedOverloadSet<'a> =
 
 #[derive(Debug, Clone)]
 pub(crate) struct CompletelyResolvedFunctionParameter<'a> {
+    pub(crate) mutability: Mutability,
     pub(crate) name: &'a NonTypeIdentifier<'a>,
     pub(crate) type_: &'a CompletelyResolvedDataType<'a>,
 }
 
 #[derive(Debug, Clone)]
 pub(crate) struct CompletelyResolvedFunctionDefinition<'a> {
-    pub(crate) name: NonTypeIdentifier<'a>,
+    pub(crate) name: &'a NonTypeIdentifier<'a>,
     pub(crate) parameters: &'a [&'a CompletelyResolvedFunctionParameter<'a>],
     pub(crate) return_type: Option<&'a CompletelyResolvedDataType<'a>>,
     pub(crate) body: Block<'a>,
     pub(crate) is_exported: bool,
 }
 
-type CompletelyResolvedOverloadSet<'a> = &'a [&'a CompletelyResolvedFunctionDefinition<'a>];
+pub(crate) type CompletelyResolvedOverloadSet<'a> =
+    &'a [&'a CompletelyResolvedFunctionDefinition<'a>];
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct LocalVariableDefinition<'a> {
@@ -144,7 +149,7 @@ pub(crate) enum PartiallyResolvedTypeDefinition<'a> {
 pub(crate) struct PartiallyResolvedGlobalVariableDefinition<'a> {
     pub(crate) is_exported: bool,
     pub(crate) mutability: Mutability,
-    pub(crate) name: NonTypeIdentifier<'a>,
+    pub(crate) name: &'a NonTypeIdentifier<'a>,
     pub(crate) type_: &'a PartiallyResolvedDataType<'a>,
     pub(crate) initial_value: Expression<'a>,
 }
@@ -159,15 +164,32 @@ pub(crate) enum PartiallyResolvedNonTypeDefinition<'a> {
 pub(crate) struct CompletelyResolvedGlobalVariableDefinition<'a> {
     pub(crate) is_exported: bool,
     pub(crate) mutability: Mutability,
-    pub(crate) name: NonTypeIdentifier<'a>,
+    pub(crate) name: &'a NonTypeIdentifier<'a>,
     pub(crate) type_: &'a CompletelyResolvedDataType<'a>,
     pub(crate) initial_value: Expression<'a>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct FunctionParameter<'a> {
+    pub(crate) mutability: Mutability,
+    pub(crate) name: &'a NonTypeIdentifier<'a>,
+    pub(crate) type_: &'a CompletelyResolvedDataType<'a>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct LocalVariable<'a> {
+    pub(crate) mutability: Mutability,
+    pub(crate) name: &'a NonTypeIdentifier<'a>,
+    pub(crate) type_: Option<&'a LookedUpDataType<'a>>,
+    // pub(crate) initial_value: Expression<'a>, // todo!
 }
 
 #[derive(Debug, Clone)]
 pub(crate) enum CompletelyResolvedNonTypeDefinition<'a> {
     GlobalVariable(&'a CompletelyResolvedGlobalVariableDefinition<'a>),
     Function(CompletelyResolvedOverloadSet<'a>),
+    FunctionParameter(&'a FunctionParameter<'a>),
+    LocalVariable(&'a LocalVariable<'a>),
 }
 
 impl CompletelyResolvedNonTypeDefinition<'_> {
@@ -214,6 +236,26 @@ impl CompletelyResolvedNonTypeDefinition<'_> {
                     .intersperse(", ".to_string())
                     .collect::<String>(),
             ),
+            CompletelyResolvedNonTypeDefinition::FunctionParameter(parameter) => {
+                format!(
+                    "{} {}: {}",
+                    parameter.mutability,
+                    parameter.name.0.lexeme(),
+                    parameter.type_.to_string(type_table)
+                )
+            }
+            CompletelyResolvedNonTypeDefinition::LocalVariable(variable) => {
+                format!(
+                    "let {} {}{} = {};",
+                    variable.mutability,
+                    variable.name.0.lexeme(),
+                    match variable.type_ {
+                        Some(type_) => format!(": {}", "todo"), // todo!
+                        None => "".to_string(),
+                    },
+                    "expression not yet known", // todo!
+                )
+            }
         }
     }
 }
@@ -353,6 +395,158 @@ pub(crate) struct Scope<'a> {
     pub(crate) non_type_definitions: HashMap<&'a str, &'a CompletelyResolvedNonTypeDefinition<'a>>,
 }
 
+impl<'a> Scope<'a> {
+    pub(crate) fn from_non_type_definitions(
+        non_type_definitions: HashMap<&'a str, &'a CompletelyResolvedNonTypeDefinition<'a>>,
+    ) -> Self {
+        Self {
+            type_definitions: Default::default(),
+            non_type_definitions,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct ScopeStack<'a> {
+    global_type_table: &'a [&'a CompletelyResolvedTypeDefinition<'a>],
+    scopes: Vec<Scope<'a>>,
+    bump_allocator: &'a Bump,
+}
+
+impl<'a> ScopeStack<'a> {
+    pub(crate) fn new(
+        global_type_table: &'a [&'a CompletelyResolvedTypeDefinition<'a>],
+        global_scope: Scope<'a>,
+        bump_allocator: &'a Bump,
+    ) -> Self {
+        Self {
+            global_type_table,
+            scopes: vec![global_scope],
+            bump_allocator,
+        }
+    }
+
+    pub(crate) fn push(&mut self, scope: Scope<'a>) {
+        self.scopes.push(scope);
+    }
+
+    pub(crate) fn pop(&mut self) -> Scope<'a> {
+        self.scopes
+            .pop()
+            .expect("this should never be called on the last scope in the stack")
+    }
+
+    pub(crate) fn len(&self) -> usize {
+        self.scopes.len()
+    }
+
+    pub(crate) fn truncate(&mut self, number_of_scopes: usize) {
+        self.scopes.truncate(number_of_scopes);
+    }
+
+    pub(crate) fn lookup_non_type(
+        &self,
+        qualified_name: &'a QualifiedNonTypeName<'a>,
+    ) -> Result<&'a CompletelyResolvedNonTypeDefinition<'a>, NameLookupError<'a>> {
+        let name = qualified_name.canonical_name();
+        for scope in self.scopes.iter().rev() {
+            if let Some(definition) = scope.non_type_definitions.get(name.as_str()) {
+                return Ok(definition);
+            }
+        }
+        Err(NameLookupError::CouldNotResolveName(
+            CouldNotResolveName::new(qualified_name.tokens()),
+        ))
+    }
+
+    pub(crate) fn lookup_type(
+        &self,
+        data_type: &'a DataType<'a>,
+    ) -> Result<&'a LookedUpDataType<'a>, NameLookupError<'a>> {
+        match data_type {
+            DataType::Named {
+                name: qualified_type_name,
+            } => {
+                // todo: this is wrong, we have to use a "canonical" format here
+                let name = qualified_type_name.canonical_name();
+                for scope in self.scopes.iter().rev() {
+                    if let Some(definition) = scope.type_definitions.get(name.as_str()) {
+                        return Ok(self
+                            .bump_allocator
+                            .alloc(LookedUpDataType::Named(definition)));
+                    }
+                }
+                return Err(NameLookupError::CouldNotResolveName(
+                    CouldNotResolveName::new(qualified_type_name.tokens()),
+                ));
+            }
+            DataType::Pointer {
+                mutability,
+                pointee_type,
+                ..
+            } => self
+                .lookup_type(pointee_type)
+                .map(|looked_up_pointee_type| {
+                    &*self.bump_allocator.alloc(LookedUpDataType::Pointer {
+                        mutability: *mutability,
+                        pointee_type: looked_up_pointee_type,
+                    })
+                })
+                .map_err(
+                    |NameLookupError::CouldNotResolveName(could_not_resolve_name)| {
+                        could_not_resolve_name
+                            .with_added_surrounding_tokens(data_type.tokens())
+                            .into()
+                    },
+                ),
+            DataType::Array { .. } => {
+                todo!()
+            }
+            DataType::FunctionPointer { .. } => {
+                todo!()
+            }
+        }
+    }
+}
+
+impl Display for ScopeStack<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        const EMPTY: &str = "";
+        const DASH: &str = "-";
+        for (depth, scope) in self.scopes.iter().enumerate() {
+            let indentation = depth * 4;
+            if depth > 0 {
+                write!(f, "{EMPTY:0$}>---", (depth - 1) * 4)?;
+            }
+            if scope.non_type_definitions.is_empty() && scope.type_definitions.is_empty() {
+                writeln!(f, "| (empty scope)")?;
+                continue;
+            }
+
+            writeln!(
+                f,
+                "| {}",
+                scope
+                    .type_definitions
+                    .keys()
+                    .chain(scope.non_type_definitions.keys())
+                    .next()
+                    .unwrap()
+            )?;
+
+            for name in scope
+                .type_definitions
+                .keys()
+                .chain(scope.non_type_definitions.keys())
+                .skip(1)
+            {
+                writeln!(f, "{EMPTY:indentation$}| {name}")?;
+            }
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone)]
 pub(crate) struct ModuleForNameResolution<'a> {
     pub(crate) canonical_path: &'a Path,
@@ -370,4 +564,21 @@ pub(crate) struct ProgramWithResolvedTypes<'a> {
 #[derive(Debug, Clone)]
 pub(crate) struct Program<'a> {
     pub(crate) data_type: &'a [CompletelyResolvedTypeDefinition<'a>],
+}
+
+#[derive(Debug, Clone)]
+pub(crate) enum LookedUpDataType<'a> {
+    Named(&'a CompletelyResolvedTypeDefinition<'a>),
+    Pointer {
+        mutability: Mutability,
+        pointee_type: &'a LookedUpDataType<'a>,
+    },
+    Array {
+        contained_type: &'a LookedUpDataType<'a>,
+        size: BackseatSize,
+    },
+    FunctionPointer {
+        parameter_types: &'a [&'a LookedUpDataType<'a>],
+        return_type: &'a LookedUpDataType<'a>,
+    },
 }

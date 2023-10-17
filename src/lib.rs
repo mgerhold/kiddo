@@ -15,10 +15,10 @@ use crate::helpers::{gather_import_directories, get_canonical_path_to_main_modul
 use crate::import_resolution::{
     categorize_names, connect_modules, find_imports, resolve_imports, ModuleWithImports,
 };
-use crate::name_lookup::ir_after_name_lookup::CompletelyResolvedNonTypeDefinition;
-use crate::name_lookup::{completely_resolve_type_definitions, partially_resolve_type_definitions};
+use crate::name_lookup::{
+    completely_resolve_type_definitions, partially_resolve_type_definitions, perform_name_lookup,
+};
 use crate::parser::errors::ErrorReport;
-use crate::parser::ir_parsed::{Expression, Statement};
 use crate::parser::parse_module;
 use crate::utils::AllocPath;
 
@@ -95,10 +95,17 @@ pub fn main<'a>(
     let program_with_resolved_types =
         completely_resolve_type_definitions(all_modules, bump_allocator);
 
-    for module in &program_with_resolved_types.modules {
+    let program_with_names_looked_up =
+        perform_name_lookup(program_with_resolved_types, bump_allocator)?;
+
+    /*for module in &program_with_resolved_types.modules {
         println!("module '{}'", module.canonical_path.display());
         println!("    non-type definitions in global scope:");
         for name in module.global_scope.non_type_definitions.keys() {
+            println!("        {}", name);
+        }
+        println!("    type definitions in global scope:");
+        for name in module.global_scope.type_definitions.keys() {
             println!("        {}", name);
         }
         for definition in module.non_type_definitions {
@@ -166,47 +173,6 @@ pub fn main<'a>(
                             }
                         }
                     }
-                }
-            }
-        }
-    }
-
-    /*for module in &program_with_resolved_types.modules {
-        println!(
-            "type definitions available in module '{}'",
-            module.canonical_path.display()
-        );
-        for (name, definition) in &module.global_scope.type_definitions {
-            println!(
-                "\t{} -> struct {}",
-                name,
-                match definition {
-                    CompletelyResolvedTypeDefinition::Struct(definition) =>
-                        definition.name.0.lexeme(),
-                }
-            );
-        }
-
-        println!(
-            "non-type definitions available in module '{}'",
-            module.canonical_path.display()
-        );
-        for (name, definition) in &module.global_scope.non_type_definitions {
-            println!(
-                "\t{} -> {}",
-                name,
-                definition.to_string(program_with_resolved_types.type_table)
-            );
-        }
-
-        for definition in module.definitions {
-            match definition {
-                Definition::Struct(_) => {}
-                Definition::Function(definition) => {
-                    println!("\tfunction {}", definition.name.0.lexeme());
-                }
-                Definition::GlobalVariable(definition) => {
-                    println!("\t{}", definition);
                 }
             }
         }

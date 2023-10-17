@@ -106,13 +106,13 @@ pub(crate) struct Overload<'a> {
 
 pub(crate) type OverloadSet<'a> = &'a [&'a Overload<'a>];
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct GlobalVariableDefinitionWithOptionalOrigin<'a> {
     pub(crate) origin: Option<&'a Import<'a>>,
     pub(crate) is_exported: bool,
     pub(crate) mutability: Mutability,
-    pub(crate) name: NonTypeIdentifier<'a>,
-    pub(crate) type_: DataType<'a>,
+    pub(crate) name: &'a NonTypeIdentifier<'a>,
+    pub(crate) type_: &'a DataType<'a>,
     pub(crate) initial_value: Expression<'a>,
 }
 

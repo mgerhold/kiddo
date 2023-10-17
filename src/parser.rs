@@ -306,7 +306,7 @@ impl<'a> ParserState<'a> {
         self.expect(TokenType::RightParenthesis)?;
 
         let return_type = if self.consume(TokenType::TildeArrow).is_some() {
-            Some(&*self.bump_allocator.alloc(self.data_type()?))
+            Some(self.data_type()?)
         } else {
             None
         };
@@ -394,7 +394,7 @@ impl<'a> ParserState<'a> {
          */
         let mut parameters = Vec::new();
         while let Token {
-            type_: TokenType::LowercaseIdentifier,
+            type_: TokenType::Const | TokenType::Mutable | TokenType::LowercaseIdentifier,
             ..
         } = self.current()
         {
@@ -409,13 +409,15 @@ impl<'a> ParserState<'a> {
     fn function_parameter(&mut self) -> Result<FunctionParameter<'a>, ParserError<'a>> {
         /*
         FunctionParameter:
-            (name=NonTypeIdentifier) ':' (type=DataType)
+            (mutability=Mutability) (name=NonTypeIdentifier) ':' (type=DataType)
          */
+        let mutability = self.mutability();
         let name = self.non_type_identifier()?;
         self.expect(TokenType::Colon)?;
         let type_ = self.data_type()?;
 
         Ok(FunctionParameter {
+            mutability,
             name: self.bump_allocator.alloc(name),
             type_,
         })
@@ -595,7 +597,7 @@ impl<'a> ParserState<'a> {
         Ok(elements)
     }
 
-    fn data_type(&mut self) -> Result<DataType<'a>, ParserError<'a>> {
+    fn data_type(&mut self) -> Result<&'a DataType<'a>, ParserError<'a>> {
         /*
         DataType:
             (name=QualifiedTypeName)
@@ -615,12 +617,12 @@ impl<'a> ParserState<'a> {
                 let size_token = self.expect(TokenType::Integer)?;
                 let size = parse_unsigned_int(size_token)?;
                 let right_square_bracket_token = self.expect(TokenType::RightSquareBracket)?;
-                Ok(DataType::Array {
+                Ok(self.bump_allocator.alloc(DataType::Array {
                     left_square_bracket_token,
                     contained_type,
                     size,
                     right_square_bracket_token,
-                })
+                }))
             }
             Token {
                 type_: TokenType::Arrow,
@@ -632,11 +634,11 @@ impl<'a> ParserState<'a> {
                 let mutability = self.mutability();
 
                 let pointee_type = self.bump_allocator.alloc(self.data_type()?);
-                Ok(DataType::Pointer {
+                Ok(self.bump_allocator.alloc(DataType::Pointer {
                     arrow_token,
                     mutability,
                     pointee_type,
-                })
+                }))
             }
             Token {
                 type_: TokenType::CapitalizedFunction,
@@ -649,16 +651,16 @@ impl<'a> ParserState<'a> {
                 self.expect(TokenType::RightParenthesis)?;
                 self.expect(TokenType::TildeArrow)?;
                 let return_type = self.bump_allocator.alloc(self.data_type()?);
-                Ok(DataType::FunctionPointer {
+                Ok(self.bump_allocator.alloc(DataType::FunctionPointer {
                     function_keyword_token,
                     parameter_list: self.bump_allocator.alloc_slice_copy(&parameter_types),
                     return_type,
-                })
+                }))
             }
             _ => {
                 // named type
                 let name = self.qualified_type_name()?;
-                Ok(DataType::Named { name })
+                Ok(self.bump_allocator.alloc(DataType::Named { name }))
             }
         }
     }
@@ -671,14 +673,14 @@ impl<'a> ParserState<'a> {
         Ok(TypeIdentifier(self.expect(TokenType::UppercaseIdentifier)?))
     }
 
-    fn non_type_identifier(&mut self) -> Result<NonTypeIdentifier<'a>, ParserError<'a>> {
+    fn non_type_identifier(&mut self) -> Result<&'a NonTypeIdentifier<'a>, ParserError<'a>> {
         /*
         TypeIdentifier:
             token=LOWERCASE_IDENTIFIER
          */
-        Ok(NonTypeIdentifier(
+        Ok(self.bump_allocator.alloc(NonTypeIdentifier(
             self.expect(TokenType::LowercaseIdentifier)?,
-        ))
+        )))
     }
 
     fn identifier(&mut self) -> Result<Identifier<'a>, ParserError<'a>> {
@@ -691,9 +693,9 @@ impl<'a> ParserState<'a> {
             TokenType::UppercaseIdentifier,
         ])?;
         match token.type_ {
-            TokenType::LowercaseIdentifier => {
-                Ok(Identifier::NonTypeIdentifier(NonTypeIdentifier(token)))
-            }
+            TokenType::LowercaseIdentifier => Ok(Identifier::NonTypeIdentifier(
+                self.bump_allocator.alloc(NonTypeIdentifier(token)),
+            )),
             TokenType::UppercaseIdentifier => Ok(Identifier::TypeIdentifier(TypeIdentifier(token))),
             _ => unreachable!(),
         }

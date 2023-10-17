@@ -209,7 +209,7 @@ impl Definition<'_> {
                 Identifier::NonTypeIdentifier(*name)
             }
             Definition::GlobalVariable(GlobalVariableDefinition { name, .. }) => {
-                Identifier::NonTypeIdentifier(*name)
+                Identifier::NonTypeIdentifier(name)
             }
         }
     }
@@ -257,7 +257,7 @@ impl Display for StructDefinition<'_> {
 #[derive(Debug, Clone, Copy)]
 pub struct FunctionDefinition<'a> {
     pub(crate) is_exported: bool,
-    pub(crate) name: NonTypeIdentifier<'a>,
+    pub(crate) name: &'a NonTypeIdentifier<'a>,
     pub(crate) parameters: &'a [FunctionParameter<'a>],
     pub(crate) return_type: Option<&'a DataType<'a>>,
     pub(crate) body: Block<'a>,
@@ -298,16 +298,17 @@ impl Display for FunctionDefinition<'_> {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct FunctionParameter<'a> {
+    pub(crate) mutability: Mutability,
     pub(crate) name: &'a NonTypeIdentifier<'a>,
-    pub(crate) type_: DataType<'a>,
+    pub(crate) type_: &'a DataType<'a>,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct GlobalVariableDefinition<'a> {
     pub(crate) is_exported: bool,
     pub(crate) mutability: Mutability,
-    pub(crate) name: NonTypeIdentifier<'a>,
-    pub(crate) type_: DataType<'a>,
+    pub(crate) name: &'a NonTypeIdentifier<'a>,
+    pub(crate) type_: &'a DataType<'a>,
     pub(crate) initial_value: Expression<'a>,
 }
 
@@ -330,8 +331,8 @@ impl Display for GlobalVariableDefinition<'_> {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct LocalVariableDefinition<'a> {
     pub(crate) mutability: Mutability,
-    pub(crate) name: NonTypeIdentifier<'a>,
-    pub(crate) type_: Option<DataType<'a>>,
+    pub(crate) name: &'a NonTypeIdentifier<'a>,
+    pub(crate) type_: Option<&'a DataType<'a>>,
     pub(crate) initial_value: Expression<'a>,
 }
 
@@ -362,7 +363,7 @@ impl Display for Mutability {
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct TypeListElement<'a> {
-    pub(crate) data_type: DataType<'a>,
+    pub(crate) data_type: &'a DataType<'a>,
     pub(crate) comma_token: Option<&'a Token<'a>>,
 }
 
@@ -439,7 +440,7 @@ impl<'a> DataType<'a> {
 #[derive(Clone, Copy)]
 pub(crate) struct StructMember<'a> {
     pub(crate) name: NonTypeIdentifier<'a>,
-    pub(crate) type_: DataType<'a>,
+    pub(crate) type_: &'a DataType<'a>,
 }
 
 impl Debug for StructMember<'_> {
@@ -554,6 +555,10 @@ impl<'a> QualifiedTypeName<'a> {
             QualifiedTypeName::Relative { tokens } => tokens,
         }
     }
+
+    pub(crate) fn canonical_name(&self) -> String {
+        self.tokens().canonical_name()
+    }
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -578,6 +583,13 @@ impl<'a> TokenSlice<'a> {
             start_offset,
             num_bytes,
         )
+    }
+
+    pub(crate) fn canonical_name(&self) -> String {
+        self.0
+            .iter()
+            .map(|token| token.lexeme().to_string())
+            .collect()
     }
 }
 
@@ -616,6 +628,10 @@ impl<'a> QualifiedNonTypeName<'a> {
             QualifiedNonTypeName::Absolute { tokens } => tokens,
             QualifiedNonTypeName::Relative { tokens } => tokens,
         }
+    }
+
+    pub(crate) fn canonical_name(&self) -> String {
+        self.tokens().canonical_name()
     }
 }
 
@@ -713,7 +729,7 @@ pub struct NonTypeIdentifier<'a>(pub &'a Token<'a>);
 #[derive(Debug, Clone, Copy)]
 pub enum Identifier<'a> {
     TypeIdentifier(TypeIdentifier<'a>),
-    NonTypeIdentifier(NonTypeIdentifier<'a>),
+    NonTypeIdentifier(&'a NonTypeIdentifier<'a>),
 }
 
 impl<'a> Identifier<'a> {

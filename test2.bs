@@ -1,9 +1,19 @@
-from test3 import f;
-from test3 import print as f;
-import test3;
-import ::test3;
-from test3 import U32;
+import std::nested;
 
-struct S { }
+export struct U32 { }
 
-function f(s: S) { }
+struct String { }
+
+let global: U32 = 42;
+
+function main(mutable argc: U32, argv: [String; 4]) {
+    let number: U32 = global;
+    let number: U32 = global + number;
+    let a = number;
+    let b = a;
+    let s: std::nested::S = 42;
+    let number_of_args: U32 = argc + global + (argv + argc * (4 + std::nested::nested_global));
+
+    let x = 0;
+    let x = x + x + x + x + x + x;
+}
