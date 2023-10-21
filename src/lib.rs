@@ -10,14 +10,16 @@ extern crate core;
 
 use bumpalo::Bump;
 
+use mutual_type_resolution::{
+    completely_resolve_type_definitions, partially_resolve_type_definitions,
+};
+
 pub use crate::command_line_arguments::CommandLineArguments;
 use crate::helpers::{gather_import_directories, get_canonical_path_to_main_module};
 use crate::import_resolution::{
     categorize_names, connect_modules, find_imports, resolve_imports, ModuleWithImports,
 };
-use crate::name_lookup::{
-    completely_resolve_type_definitions, partially_resolve_type_definitions, perform_name_lookup,
-};
+use crate::name_lookup::perform_name_lookup;
 use crate::parser::errors::ErrorReport;
 use crate::parser::parse_module;
 use crate::utils::AllocPath;
@@ -27,6 +29,7 @@ mod constants;
 mod helpers;
 mod import_resolution;
 mod lexer;
+mod mutual_type_resolution;
 mod name_lookup;
 mod parser;
 mod token;
