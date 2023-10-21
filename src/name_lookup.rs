@@ -765,8 +765,7 @@ fn perform_name_lookup_for_global_variable_definition<'a>(
     scope_stack: &mut ScopeStack<'a>,
     bump_allocator: &'a Bump,
 ) -> Result<(), NameLookupError<'a>> {
-    // todo: perform name lookup for initializing expression
-    Ok(())
+    perform_name_lookup_for_expression(&definition.initial_value, scope_stack, bump_allocator)
 }
 
 fn perform_name_lookup_for_statement<'a>(
