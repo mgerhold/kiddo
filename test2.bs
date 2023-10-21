@@ -1,19 +1,56 @@
 import std::nested;
 
-export struct U32 { }
+struct U8 { }
+
+export struct U32 {
+    a: U8,
+    b: U8,
+    c: U8,
+    d: U8,
+}
 
 struct String { }
 
 let global: U32 = 42;
 
 function main(mutable argc: U32, argv: [String; 4]) {
+    42;
+    global + global;
+    global + argc + argv;
     let number: U32 = global;
     let number: U32 = global + number;
     let a = number;
     let b = a;
     let s: std::nested::S = 42;
     let number_of_args: U32 = argc + global + (argv + argc * (4 + std::nested::nested_global));
+    {
+        let a = 10;
+        let b = 20;
+        let besonders = 10;
+        {
+            {
+                {
+                    {
+                        let xyz = 20;
+                    }
+                }
+            }
+        }
+        let x = besonders;
+    }
+
+    let x = {
+        yield {
+            let x = {
+                yield (42);
+            };
+            yield x + x;
+        };
+    };
 
     let x = 0;
     let x = x + x + x + x + x + x;
+
+    let array: [U32; 10] = 10;
+    let function_pointer: Function(U32, U32, ->U32) ~> [->U32; 2] = 42;
 }
