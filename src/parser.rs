@@ -444,6 +444,7 @@ impl<'a> ParserState<'a> {
 
     fn statement(&mut self) -> Result<Statement<'a>, ParserError<'a>> {
         match self.current().type_ {
+            TokenType::LeftCurlyBracket => self.block_expression_statement(),
             TokenType::Yield => self.yield_statement(),
             TokenType::Return => self.return_statement(),
             TokenType::Let => Ok(Statement::VariableDefinition(
@@ -451,6 +452,12 @@ impl<'a> ParserState<'a> {
             )),
             _ => self.expression_statement(),
         }
+    }
+
+    fn block_expression_statement(&mut self) -> Result<Statement<'a>, ParserError<'a>> {
+        let block = self.block()?;
+        let _ = self.consume(TokenType::Semicolon);
+        Ok(Statement::ExpressionStatement(Expression::Block(block)))
     }
 
     fn yield_statement(&mut self) -> Result<Statement<'a>, ParserError<'a>> {
