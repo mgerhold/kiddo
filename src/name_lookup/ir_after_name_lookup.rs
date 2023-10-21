@@ -490,6 +490,18 @@ impl<'a> ScopeStack<'a> {
         ))
     }
 
+    pub(crate) fn peek(&self) -> &Scope<'a> {
+        self.scopes
+            .last()
+            .expect("the scope stack must not be empty")
+    }
+
+    pub(crate) fn peek_mut(&mut self) -> &mut Scope<'a> {
+        self.scopes
+            .last_mut()
+            .expect("the scope stack must not be empty")
+    }
+
     pub(crate) fn lookup_type(
         &self,
         data_type: &'a DataType<'a>,
