@@ -249,7 +249,7 @@ impl CompletelyResolvedNonTypeDefinition<'_> {
                     variable.mutability,
                     variable.name.0.lexeme(),
                     match variable.type_ {
-                        Some(type_) => format!(": {}", "todo"), // todo!
+                        Some(type_) => format!(": {type_}"),
                         None => "".to_string(),
                     },
                     "expression not yet known", // todo!
@@ -387,7 +387,26 @@ pub(crate) enum CompletelyResolvedTypeDefinition<'a> {
     Struct(&'a CompletelyResolvedStructDefinition<'a>),
 }
 
-#[derive(Debug, Clone)]
+impl Display for CompletelyResolvedTypeDefinition<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CompletelyResolvedTypeDefinition::Struct(definition) => {
+                write!(
+                    f,
+                    "{}{}",
+                    if definition.is_exported {
+                        "export "
+                    } else {
+                        ""
+                    },
+                    definition.name.0.lexeme()
+                )
+            }
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default)]
 pub(crate) struct Scope<'a> {
     pub(crate) type_definitions: HashMap<&'a str, &'a CompletelyResolvedTypeDefinition<'a>>,
     pub(crate) non_type_definitions: HashMap<&'a str, &'a CompletelyResolvedNonTypeDefinition<'a>>,
@@ -579,4 +598,35 @@ pub(crate) enum LookedUpDataType<'a> {
         parameter_types: &'a [&'a LookedUpDataType<'a>],
         return_type: &'a LookedUpDataType<'a>,
     },
+}
+
+impl Display for LookedUpDataType<'_> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LookedUpDataType::Named(definition) => definition.fmt(f),
+            LookedUpDataType::Pointer {
+                mutability,
+                pointee_type,
+            } => {
+                write!(f, "-> {} {}", mutability, pointee_type)
+            }
+            LookedUpDataType::Array {
+                contained_type,
+                size,
+            } => {
+                write!(f, "[{}; {}]", contained_type, size)
+            }
+            LookedUpDataType::FunctionPointer {
+                parameter_types,
+                return_type,
+            } => {
+                write!(
+                    f,
+                    "Function({}) ~> {}",
+                    parameter_types.iter().map(ToString::to_string).join(", "),
+                    return_type
+                )
+            }
+        }
+    }
 }
