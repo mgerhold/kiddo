@@ -768,7 +768,7 @@ fn perform_name_lookup_for_global_variable_definition<'a>(
     perform_name_lookup_for_expression(&definition.initial_value, scope_stack, bump_allocator)
 }
 
-fn perform_name_lookup_for_variable_definition<'a>(
+fn perform_name_lookup_for_local_variable_definition<'a>(
     definition: &'a LocalVariableDefinition<'a>,
     scope_stack: &mut ScopeStack<'a>,
     bump_allocator: &'a Bump,
@@ -821,7 +821,11 @@ fn perform_name_lookup_for_statement<'a>(
         }
         Statement::Return(None) => Ok(()),
         Statement::VariableDefinition(definition) => {
-            perform_name_lookup_for_variable_definition(definition, scope_stack, bump_allocator)
+            perform_name_lookup_for_local_variable_definition(
+                definition,
+                scope_stack,
+                bump_allocator,
+            )
         }
     }
 }
