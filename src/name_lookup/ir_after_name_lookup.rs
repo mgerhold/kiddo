@@ -541,11 +541,37 @@ impl<'a> ScopeStack<'a> {
                             .into()
                     },
                 ),
-            DataType::Array { .. } => {
-                todo!()
+            DataType::Array {
+                contained_type,
+                size,
+                ..
+            } => {
+                let looked_up_type = self.lookup_type(contained_type)?;
+                Ok(self.bump_allocator.alloc(LookedUpDataType::Array {
+                    contained_type: looked_up_type,
+                    size: *size,
+                }))
             }
-            DataType::FunctionPointer { .. } => {
-                todo!()
+            DataType::FunctionPointer {
+                parameter_list,
+                return_type,
+                ..
+            } => {
+                let looked_up_parameter_types = parameter_list
+                    .iter()
+                    .map(|parameter| self.lookup_type(parameter.data_type))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let looked_up_parameter_types = &*self
+                    .bump_allocator
+                    .alloc_slice_clone(&looked_up_parameter_types);
+                let looked_up_return_type = self.lookup_type(return_type)?;
+
+                Ok(self
+                    .bump_allocator
+                    .alloc(LookedUpDataType::FunctionPointer {
+                        parameter_types: looked_up_parameter_types,
+                        return_type: looked_up_return_type,
+                    }))
             }
         }
     }
