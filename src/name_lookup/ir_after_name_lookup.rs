@@ -484,7 +484,6 @@ impl<'a> ScopeStack<'a> {
             DataType::Named {
                 name: qualified_type_name,
             } => {
-                // todo: this is wrong, we have to use a "canonical" format here
                 let name = qualified_type_name.canonical_name();
                 for scope in self.scopes.iter().rev() {
                     if let Some(definition) = scope.type_definitions.get(name.as_str()) {
