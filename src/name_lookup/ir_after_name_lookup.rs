@@ -4,6 +4,7 @@ use std::path::Path;
 
 use bumpalo::Bump;
 use hashbrown::hash_map::DefaultHashBuilder;
+use itertools::Itertools;
 
 use crate::constants::BackseatSize;
 use crate::import_resolution::representations::{NonTypeDefinition, TypeDefinition};
@@ -225,16 +226,14 @@ impl CompletelyResolvedNonTypeDefinition<'_> {
                                     parameter.name.0.lexeme(),
                                     parameter.type_.to_string(type_table)
                                 ))
-                                .intersperse(", ".to_string())
-                                .collect::<String>(),
+                                .join(", "),
                             match overload.return_type {
                                 None => "".to_string(),
                                 Some(type_) => format!(" ~> {}", type_.to_string(type_table)),
                             }
                         )
                     })
-                    .intersperse(", ".to_string())
-                    .collect::<String>(),
+                    .join(", "),
             ),
             CompletelyResolvedNonTypeDefinition::FunctionParameter(parameter) => {
                 format!(
@@ -354,8 +353,7 @@ impl CompletelyResolvedDataType<'_> {
                 let joined: String = parameter_types
                     .iter()
                     .map(|type_| type_.to_string(global_type_table))
-                    .intersperse(", ".to_string())
-                    .collect();
+                    .join(", ");
                 format!(
                     "Function({}) ~> {}",
                     joined,
