@@ -18,7 +18,7 @@ use crate::name_lookup::target_ir::{
     PartiallyResolvedNonTypeDefinition, ProgramWithResolvedTypes, ScopeStack,
 };
 use crate::parser::ir_parsed as source_ir;
-use crate::parser::ir_parsed::{Expression, Statement};
+use crate::parser::ir_parsed::{Expression, LocalVariableDefinition, Statement};
 
 pub(crate) mod errors;
 pub(crate) mod ir_after_name_lookup;
@@ -768,6 +768,42 @@ fn perform_name_lookup_for_global_variable_definition<'a>(
     perform_name_lookup_for_expression(&definition.initial_value, scope_stack, bump_allocator)
 }
 
+fn perform_name_lookup_for_variable_definition<'a>(
+    definition: &'a LocalVariableDefinition<'a>,
+    scope_stack: &mut ScopeStack<'a>,
+    bump_allocator: &'a Bump,
+) -> Result<(), NameLookupError<'a>> {
+    perform_name_lookup_for_expression(&definition.initial_value, scope_stack, bump_allocator)?;
+
+    let must_open_new_scope = scope_stack
+        .peek()
+        .get_non_type_definition(definition.name.0.lexeme())
+        .is_some();
+
+    if must_open_new_scope {
+        scope_stack.push(Scope::default());
+    }
+
+    let looked_up_type = definition
+        .type_
+        .map(|type_| scope_stack.lookup_type(&type_))
+        .transpose()?;
+
+    scope_stack.peek_mut().non_type_definitions.insert(
+        definition.name.0.lexeme(),
+        &*bump_allocator.alloc(CompletelyResolvedNonTypeDefinition::LocalVariable(
+            &*bump_allocator.alloc(LocalVariable {
+                mutability: definition.mutability,
+                name: definition.name,
+                type_: looked_up_type,
+            }),
+        )),
+    );
+
+    println!("{scope_stack}");
+    Ok(())
+}
+
 fn perform_name_lookup_for_statement<'a>(
     statement: &'a Statement<'a>,
     scope_stack: &mut ScopeStack<'a>,
@@ -775,34 +811,19 @@ fn perform_name_lookup_for_statement<'a>(
 ) -> Result<(), NameLookupError<'a>> {
     match statement {
         Statement::ExpressionStatement(expression) => {
-            perform_name_lookup_for_expression(expression, scope_stack, bump_allocator)?;
+            perform_name_lookup_for_expression(expression, scope_stack, bump_allocator)
         }
-        Statement::Yield(_) => {}
-        Statement::Return(_) => {}
+        Statement::Yield(expression) => {
+            perform_name_lookup_for_expression(expression, scope_stack, bump_allocator)
+        }
+        Statement::Return(Some(expression)) => {
+            perform_name_lookup_for_expression(expression, scope_stack, bump_allocator)
+        }
+        Statement::Return(None) => Ok(()),
         Statement::VariableDefinition(definition) => {
-            perform_name_lookup_for_expression(
-                &definition.initial_value,
-                scope_stack,
-                bump_allocator,
-            )?;
-
-            scope_stack.push(Scope::from_non_type_definitions(HashMap::from([(
-                definition.name.0.lexeme(),
-                &*bump_allocator.alloc(CompletelyResolvedNonTypeDefinition::LocalVariable(
-                    &*bump_allocator.alloc(LocalVariable {
-                        mutability: definition.mutability,
-                        name: definition.name,
-                        type_: definition
-                            .type_
-                            .map(|type_| scope_stack.lookup_type(&type_))
-                            .transpose()?,
-                    }),
-                )),
-            )])));
-            println!("{scope_stack}");
+            perform_name_lookup_for_variable_definition(definition, scope_stack, bump_allocator)
         }
     }
-    Ok(())
 }
 
 fn perform_name_lookup_for_overload<'a>(
