@@ -421,6 +421,20 @@ impl<'a> Scope<'a> {
             non_type_definitions,
         }
     }
+
+    pub(crate) fn get_type_definition(
+        &self,
+        name: &str,
+    ) -> Option<&'a CompletelyResolvedTypeDefinition<'a>> {
+        self.type_definitions.get(name).copied()
+    }
+
+    pub(crate) fn get_non_type_definition(
+        &self,
+        name: &str,
+    ) -> Option<&'a CompletelyResolvedNonTypeDefinition<'a>> {
+        self.non_type_definitions.get(name).copied()
+    }
 }
 
 #[derive(Debug, Clone)]
