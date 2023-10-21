@@ -746,9 +746,12 @@ fn perform_name_lookup_for_expression<'a>(
             perform_name_lookup_for_expression(rhs, scope_stack, bump_allocator)?;
         }
         Expression::Block(block) => {
+            let number_of_scopes = scope_stack.len();
+            scope_stack.push(Scope::default());
             for statement in block.statements {
                 perform_name_lookup_for_statement(statement, scope_stack, bump_allocator)?;
             }
+            scope_stack.truncate(number_of_scopes);
         }
         Expression::Name(qualified_name) => {
             scope_stack.lookup_non_type(qualified_name)?;
