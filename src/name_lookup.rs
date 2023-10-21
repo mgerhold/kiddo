@@ -85,7 +85,7 @@ pub(crate) fn partially_resolve_data_type<'a>(
             let mut resolved_parameter_types = Vec::new();
             for parameter in *parameter_list {
                 match partially_resolve_data_type(
-                    &parameter.data_type,
+                    parameter.data_type,
                     type_dictionary,
                     bump_allocator,
                 ) {
@@ -160,7 +160,7 @@ pub(crate) fn partially_resolve_type_definitions<'a>(
                 let mut partially_resolved_members = Vec::new();
                 for member in struct_definition.members {
                     let partially_resolved_member_type = partially_resolve_data_type(
-                        &member.type_,
+                        member.type_,
                         &type_dictionary,
                         bump_allocator,
                     )?;
@@ -563,11 +563,8 @@ pub(crate) fn partially_resolve_non_type_name_data_types<'a>(
                 if definition.origin.is_some() {
                     continue;
                 }
-                let partially_resolved_type = partially_resolve_data_type(
-                    &definition.type_,
-                    type_dictionary,
-                    bump_allocator,
-                )?;
+                let partially_resolved_type =
+                    partially_resolve_data_type(definition.type_, type_dictionary, bump_allocator)?;
                 partially_resolved_definitions.insert(
                     *name,
                     &*bump_allocator.alloc(PartiallyResolvedNonTypeDefinition::GlobalVariable(
@@ -590,7 +587,7 @@ pub(crate) fn partially_resolve_non_type_name_data_types<'a>(
                     let mut partially_resolved_parameters = Vec::new();
                     for parameter in overload.definition.parameters {
                         let partially_resolved_type = partially_resolve_data_type(
-                            &parameter.type_,
+                            parameter.type_,
                             type_dictionary,
                             bump_allocator,
                         )?;
@@ -641,13 +638,13 @@ pub(crate) fn partially_resolve_non_type_name_data_types<'a>(
 fn freeze_type_table<'a>(
     intermediate_global_type_table: &'a [&'a target_ir::AlmostCompletelyResolvedTypeDefinition],
     bump_allocator: &'a Bump,
-) -> &'a [&'a target_ir::CompletelyResolvedTypeDefinition<'a>] {
+) -> &'a [&'a CompletelyResolvedTypeDefinition<'a>] {
     bump_allocator.alloc_slice_clone(
         &intermediate_global_type_table
             .iter()
             .map(|type_| match type_ {
                 target_ir::AlmostCompletelyResolvedTypeDefinition::Struct(struct_definition) => {
-                    &*bump_allocator.alloc(target_ir::CompletelyResolvedTypeDefinition::Struct(
+                    &*bump_allocator.alloc(CompletelyResolvedTypeDefinition::Struct(
                         struct_definition.expect("must have been set before"),
                     ))
                 }
@@ -786,7 +783,7 @@ fn perform_name_lookup_for_local_variable_definition<'a>(
 
     let looked_up_type = definition
         .type_
-        .map(|type_| scope_stack.lookup_type(&type_))
+        .map(|type_| scope_stack.lookup_type(type_))
         .transpose()?;
 
     scope_stack.peek_mut().non_type_definitions.insert(

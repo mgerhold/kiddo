@@ -206,7 +206,7 @@ impl Definition<'_> {
         match self {
             Definition::Struct(StructDefinition { name, .. }) => Identifier::TypeIdentifier(*name),
             Definition::Function(FunctionDefinition { name, .. }) => {
-                Identifier::NonTypeIdentifier(*name)
+                Identifier::NonTypeIdentifier(name)
             }
             Definition::GlobalVariable(GlobalVariableDefinition { name, .. }) => {
                 Identifier::NonTypeIdentifier(name)
